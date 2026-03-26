@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/auth-context';
+import { palette } from '../constants/colors';
 
 export default function Index() {
   const { auth } = useAuth();
@@ -36,27 +37,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#EFEADD',
+    backgroundColor: palette.background,
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 10,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 18,
-    color: '#BA806A',
+    color: palette.text,
     marginBottom: 40,
     textAlign: 'center',
+    opacity: 0.8,
   },
   buttonContainer: {
     width: '100%',
     gap: 15,
   },
   button: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.accent,
     paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
@@ -67,7 +69,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   buttonText: {
-    color: '#EFEADD',
+    color: palette.text,
     fontSize: 18,
     fontWeight: 'bold',
   },

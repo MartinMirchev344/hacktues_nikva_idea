@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { login, register } from '../lib/auth-api';
+import { palette } from '../constants/colors';
 
 export default function Auth() {
   const router = useRouter();
@@ -85,7 +86,7 @@ export default function Auth() {
         <TextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor="#6D7A71"
+          placeholderTextColor={palette.text}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -94,7 +95,7 @@ export default function Auth() {
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor="#6D7A71"
+          placeholderTextColor={palette.text}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -103,7 +104,7 @@ export default function Auth() {
           <TextInput
             style={styles.input}
             placeholder="Confirm Password"
-            placeholderTextColor="#6D7A71"
+            placeholderTextColor={palette.text}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -116,7 +117,7 @@ export default function Auth() {
           disabled={isSubmitting}
         >
           {isSubmitting ? (
-            <ActivityIndicator color="#EFEADD" />
+            <ActivityIndicator color={palette.background} />
           ) : (
             <Text style={styles.buttonText}>{isLogin ? 'Log In' : 'Sign Up'}</Text>
           )}
@@ -133,11 +134,11 @@ export default function Auth() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EFEADD',
+    backgroundColor: palette.background,
     justifyContent: 'center',
   },
   formContainer: {
-    backgroundColor: '#CDD9C5',
+    backgroundColor: palette.surface,
     margin: 20,
     borderRadius: 20,
     padding: 30,
@@ -150,19 +151,20 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
-    color: '#BA806A',
+    color: palette.text,
     textAlign: 'center',
     marginBottom: 30,
+    opacity: 0.8,
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#E8D7C7',
+    backgroundColor: palette.background,
     borderRadius: 25,
     padding: 4,
     marginBottom: 30,
@@ -174,28 +176,30 @@ const styles = StyleSheet.create({
     borderRadius: 21,
   },
   activeTab: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.accent,
   },
   tabText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6D7A71',
+    color: palette.text,
+    opacity: 0.75,
   },
   activeTabText: {
-    color: '#EFEADD',
+    color: palette.text,
+    opacity: 1,
   },
   input: {
-    backgroundColor: '#EFEADD',
-    borderWidth: 2,
-    borderColor: '#6D7A71',
+    backgroundColor: palette.background,
+    borderWidth: 1.5,
+    borderColor: palette.accent,
     padding: 15,
     marginBottom: 15,
     borderRadius: 12,
     fontSize: 16,
-    color: '#6D7A71',
+    color: palette.text,
   },
   button: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
@@ -205,7 +209,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: '#EFEADD',
+    color: palette.background,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -214,8 +218,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   backLinkText: {
-    color: '#6D7A71',
+    color: palette.text,
     fontSize: 16,
     textDecorationLine: 'underline',
+    opacity: 0.75,
   },
 });

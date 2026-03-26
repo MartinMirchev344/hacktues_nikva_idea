@@ -8,11 +8,11 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { getLessons, Lesson } from '../lib/auth-api';
+import { palette } from '../constants/colors';
 
 export default function Home() {
   const router = useRouter();
@@ -79,9 +79,6 @@ export default function Home() {
     { top: 130, right: 90, width: 70, height: 40, opacity: 0.6 },
     { top: 240, left: 10, width: 80, height: 46, opacity: 0.65 },
   ];
-
-  const beaverImg = require('../assets/beaver.png');
-
   const renderLesson = ({ item, index }: { item: Lesson; index: number }) => {
     const exerciseCount = item['exercise_count'] ?? item.exercises?.length ?? 0;
     const floatY = floatAnim.interpolate({
@@ -104,16 +101,18 @@ export default function Home() {
       >
         <TouchableOpacity
           style={styles.lessonCloud}
-          onPress={() => router.push(`/lessons/${item.slug}`)}
+          onPress={() =>
+            router.push({
+              pathname: '/lessons/[slug]',
+              params: { slug: item.slug },
+            })
+          }
           activeOpacity={0.9}
         >
           <Text style={styles.lessonTitleCloud}>{item.title}</Text>
           <Text style={styles.lessonMetaCloud}>
             Difficulty: {item.difficulty} • {exerciseCount} exercises
           </Text>
-          {index === 1 && (
-            <Image source={beaverImg} style={styles.beaver} resizeMode='contain' />
-          )}
         </TouchableOpacity>
       </Animated.View>
     );
@@ -147,7 +146,7 @@ export default function Home() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#BA806A" style={{ marginTop: 20 }} />
+        <ActivityIndicator size="large" color={palette.text} style={{ marginTop: 20 }} />
       ) : error ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : lessons.length === 0 ? (
@@ -171,20 +170,21 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 40,
-    backgroundColor: '#6EA8E6',
+    backgroundColor: palette.background,
   },
   welcome: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: palette.text,
     marginBottom: 4,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#BA806A',
+    color: palette.text,
     marginBottom: 12,
     textAlign: 'center',
+    opacity: 0.75,
   },
   headerRow: {
     flexDirection: 'row',
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   xpBubble: {
-    backgroundColor: '#ffffff',
+    backgroundColor: palette.surface,
     borderRadius: 24,
     paddingVertical: 6,
     paddingHorizontal: 14,
@@ -209,14 +209,15 @@ const styles = StyleSheet.create({
   xpNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#6EA8E6',
+    color: palette.text,
   },
   xpLabel: {
     fontSize: 10,
-    color: '#6D7A71',
+    color: palette.text,
+    opacity: 0.75,
   },
   logoutButton: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -229,7 +230,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   logoutText: {
-    color: '#EFEADD',
+    color: palette.background,
     fontSize: 14,
     fontWeight: 'bold',
   },
@@ -239,11 +240,11 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontSize: 14,
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 16,
   },
   streakBubble: {
-    backgroundColor: '#ffffff',
+    backgroundColor: palette.surface,
     borderRadius: 24,
     paddingVertical: 6,
     paddingHorizontal: 14,
@@ -258,11 +259,12 @@ const styles = StyleSheet.create({
   streakNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#6EA8E6',
+    color: palette.text,
   },
   streakLabel: {
     fontSize: 10,
-    color: '#6D7A71',
+    color: palette.text,
+    opacity: 0.75,
   },
   list: {
     paddingBottom: 20,
@@ -270,17 +272,18 @@ const styles = StyleSheet.create({
   lessonTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 6,
   },
   lessonDescription: {
     fontSize: 14,
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 8,
   },
   lessonMeta: {
     fontSize: 12,
-    color: '#BA806A',
+    color: palette.text,
+    opacity: 0.75,
   },
   lessonWrapper: {
     marginBottom: 18,
@@ -292,7 +295,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 200,
-    backgroundColor: '#73c2fb',
+    backgroundColor: palette.surface,
     opacity: 0.95,
   },
   skyBottomGradient: {
@@ -301,19 +304,19 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 220,
-    backgroundColor: '#98d8ff',
+    backgroundColor: palette.accent,
     opacity: 0.92,
   },
   skyCloud: {
     position: 'absolute',
-    backgroundColor: '#ffffff',
+    backgroundColor: palette.background,
     borderRadius: 200,
-    opacity: 0.2,
+    opacity: 0.55,
   },
   lessonCloud: {
     width: '88%',
     minHeight: 120,
-    backgroundColor: '#ffffff',
+    backgroundColor: palette.background,
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
@@ -324,7 +327,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
     borderWidth: 2,
-    borderColor: '#E8F4FD',
+    borderColor: palette.surface,
   },
   cloudImage: {
     position: 'absolute',
@@ -335,25 +338,18 @@ const styles = StyleSheet.create({
   lessonTitleCloud: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#093A65',
+    color: palette.text,
     zIndex: 2,
     marginTop: 12,
     textAlign: 'center',
   },
   lessonMetaCloud: {
     fontSize: 12,
-    color: '#1A4E9D',
+    color: palette.text,
     zIndex: 2,
     marginTop: 8,
     textAlign: 'center',
-  },
-  beaver: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    right: 10,
-    top: 10,
-    zIndex: 3,
+    opacity: 0.75,
   },
   // legacy cloud-shape styles are removed; images are now used instead.
   cloudBase: {
@@ -361,7 +357,7 @@ const styles = StyleSheet.create({
     bottom: 8,
     width: '100%',
     height: 62,
-    backgroundColor: '#fff',
+    backgroundColor: palette.background,
     borderRadius: 32,
   },
   cloudBump: {
@@ -369,7 +365,7 @@ const styles = StyleSheet.create({
     top: 0,
     width: 80,
     height: 80,
-    backgroundColor: '#fff',
+    backgroundColor: palette.background,
     borderRadius: 40,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -384,26 +380,26 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   errorText: {
-    color: '#BA806A',
+    color: palette.text,
     textAlign: 'center',
     marginTop: 16,
   },
   emptyText: {
-    color: '#ffffff',
+    color: palette.text,
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
   },
   button: {
     marginTop: 12,
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
     alignSelf: 'center',
   },
   buttonText: {
-    color: '#EFEADD',
+    color: palette.background,
     fontSize: 18,
     fontWeight: 'bold',
   },

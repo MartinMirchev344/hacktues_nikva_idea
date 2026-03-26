@@ -11,6 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import { getLesson, createAttempt, Lesson, Exercise } from '../../lib/auth-api';
+import { palette } from '../../constants/colors';
 
 export default function LessonDetail() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function LessonDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#BA806A" />
+        <ActivityIndicator size="large" color={palette.text} />
         <Text style={styles.loadingText}>Loading lesson...</Text>
       </View>
     );
@@ -123,17 +124,17 @@ export default function LessonDetail() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EFEADD',
+    backgroundColor: palette.background,
     padding: 16,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#EFEADD',
+    backgroundColor: palette.background,
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: palette.surface,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
@@ -146,12 +147,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 8,
   },
   description: {
     fontSize: 16,
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 12,
   },
   meta: {
@@ -160,39 +161,40 @@ const styles = StyleSheet.create({
   },
   difficulty: {
     fontSize: 14,
-    color: '#BA806A',
+    color: palette.text,
     textTransform: 'capitalize',
     fontWeight: '600',
+    opacity: 0.75,
   },
   duration: {
     fontSize: 14,
-    color: '#6D7A71',
+    color: palette.text,
   },
   exercisesTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 12,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#6D7A71',
+    color: palette.text,
   },
   errorText: {
     fontSize: 16,
-    color: '#BA806A',
+    color: palette.text,
     textAlign: 'center',
     marginBottom: 16,
   },
   backButton: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
   backText: {
-    color: '#EFEADD',
+    color: palette.background,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -200,7 +202,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   exerciseCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: palette.surface,
     padding: 16,
     marginBottom: 12,
     borderRadius: 12,
@@ -213,12 +215,12 @@ const styles = StyleSheet.create({
   exercisePrompt: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 8,
   },
   exerciseInstructions: {
     fontSize: 14,
-    color: '#6D7A71',
+    color: palette.text,
     marginBottom: 12,
   },
   exerciseMeta: {
@@ -228,22 +230,23 @@ const styles = StyleSheet.create({
   },
   exerciseType: {
     fontSize: 12,
-    color: '#BA806A',
+    color: palette.text,
     textTransform: 'capitalize',
+    opacity: 0.75,
   },
   repetitions: {
     fontSize: 12,
-    color: '#6D7A71',
+    color: palette.text,
   },
   startButton: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
   startButtonText: {
-    color: '#EFEADD',
+    color: palette.background,
     fontSize: 16,
     fontWeight: 'bold',
   },

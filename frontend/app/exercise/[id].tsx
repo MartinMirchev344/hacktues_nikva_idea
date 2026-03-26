@@ -18,6 +18,7 @@ import {
   verifySign,
   VerifyResult,
 } from '../../lib/auth-api';
+import { palette } from '../../constants/colors';
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 
@@ -113,7 +114,7 @@ export default function Exercise() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#BA806A" />
+        <ActivityIndicator size="large" color={palette.text} />
         <Text style={styles.loadingText}>Loading exercise...</Text>
       </View>
     );
@@ -186,7 +187,7 @@ export default function Exercise() {
             {/* Uploading overlay */}
             {phase === 'uploading' && (
               <View style={styles.uploadingOverlay}>
-                <ActivityIndicator size="large" color="#EFEADD" />
+                <ActivityIndicator size="large" color={palette.background} />
                 <Text style={styles.uploadingText}>Analysing your sign...</Text>
               </View>
             )}
@@ -329,17 +330,17 @@ function FeedbackCard({ attempt }: { attempt: any }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EFEADD' },
+  container: { flex: 1, backgroundColor: palette.background },
   scroll: { padding: 16, gap: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#EFEADD', padding: 24 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.background, padding: 24 },
 
-  title: { fontSize: 22, fontWeight: 'bold', color: '#6D7A71', textAlign: 'center', marginBottom: 8 },
-  loadingText: { marginTop: 12, fontSize: 16, color: '#6D7A71' },
-  errorText: { fontSize: 16, color: '#BA806A', textAlign: 'center', marginBottom: 16 },
-  hint: { fontSize: 14, color: '#6D7A71', textAlign: 'center', marginTop: 4 },
+  title: { fontSize: 22, fontWeight: 'bold', color: palette.text, textAlign: 'center', marginBottom: 8 },
+  loadingText: { marginTop: 12, fontSize: 16, color: palette.text },
+  errorText: { fontSize: 16, color: palette.text, textAlign: 'center', marginBottom: 16 },
+  hint: { fontSize: 14, color: palette.text, textAlign: 'center', marginTop: 4 },
 
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: palette.surface,
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',
@@ -348,11 +349,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#6D7A71', marginBottom: 12 },
-  cardBody: { fontSize: 15, color: '#6D7A71', lineHeight: 22 },
-  prompt: { fontSize: 18, fontWeight: 'bold', color: '#6D7A71', marginBottom: 6 },
-  targetSign: { fontSize: 14, color: '#6D7A71', marginTop: 8 },
-  targetSignValue: { fontWeight: 'bold', color: '#BA806A' },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', color: palette.text, marginBottom: 12 },
+  cardBody: { fontSize: 15, color: palette.text, lineHeight: 22 },
+  prompt: { fontSize: 18, fontWeight: 'bold', color: palette.text, marginBottom: 6 },
+  targetSign: { fontSize: 14, color: palette.text, marginTop: 8 },
+  targetSignValue: { fontWeight: 'bold', color: palette.text },
 
   // Camera
   cameraWrapper: {
@@ -384,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  uploadingText: { color: '#EFEADD', fontSize: 16, fontWeight: '600' },
+  uploadingText: { color: palette.background, fontSize: 16, fontWeight: '600' },
 
   // Record / stop buttons
   recordBtn: {
@@ -392,23 +393,23 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
   },
-  recordBtnInner: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFEADD' },
+  recordBtnInner: { width: 36, height: 36, borderRadius: 18, backgroundColor: palette.background },
   stopBtn: {
     alignSelf: 'center',
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
   },
-  stopBtnInner: { width: 28, height: 28, borderRadius: 4, backgroundColor: '#EFEADD' },
+  stopBtnInner: { width: 28, height: 28, borderRadius: 4, backgroundColor: palette.background },
 
   // Results
   resultBanner: {
@@ -418,8 +419,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
-  bannerPass: { backgroundColor: '#4CAF50' },
-  bannerFail: { backgroundColor: '#BA806A' },
+  bannerPass: { backgroundColor: palette.accent },
+  bannerFail: { backgroundColor: palette.text },
   resultIcon: { fontSize: 36, color: '#FFF', fontWeight: 'bold' },
   resultTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
   resultSub: { fontSize: 14, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
@@ -429,35 +430,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#EFEADD',
+    borderBottomColor: palette.background,
   },
-  scoreLabel: { fontSize: 14, color: '#6D7A71' },
+  scoreLabel: { fontSize: 14, color: palette.text },
   scoreLabelBold: { fontWeight: 'bold' },
-  scoreValue: { fontSize: 14, color: '#BA806A', fontWeight: '600' },
-  scoreValueBold: { color: '#6D7A71', fontWeight: 'bold' },
+  scoreValue: { fontSize: 14, color: palette.text, fontWeight: '600' },
+  scoreValueBold: { color: palette.text, fontWeight: 'bold' },
 
   feedbackList: { marginTop: 10, gap: 4 },
-  feedbackItem: { fontSize: 14, color: '#6D7A71', lineHeight: 20 },
+  feedbackItem: { fontSize: 14, color: palette.text, lineHeight: 20 },
 
   resultActions: { flexDirection: 'row', gap: 12 },
   retryBtn: {
     flex: 1,
     borderWidth: 2,
-    borderColor: '#BA806A',
+    borderColor: palette.text,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  retryBtnText: { color: '#BA806A', fontSize: 16, fontWeight: 'bold' },
+  retryBtnText: { color: palette.text, fontSize: 16, fontWeight: 'bold' },
   submitBtn: { flex: 1 },
 
   btn: {
-    backgroundColor: '#BA806A',
+    backgroundColor: palette.text,
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
   },
-  btnDisabled: { backgroundColor: '#CCCCCC' },
-  btnText: { color: '#EFEADD', fontSize: 16, fontWeight: 'bold' },
+  btnDisabled: { backgroundColor: palette.accent },
+  btnText: { color: palette.background, fontSize: 16, fontWeight: 'bold' },
 });
