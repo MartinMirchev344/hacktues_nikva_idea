@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
-import { getLesson, createAttempt, Lesson, Exercise } from '../../lib/auth-api';
+import { getLesson, createAttempt, getMyAttempts, Lesson, Exercise } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
 import { ScreenBackButton } from '../../components/screen-back-button';
 
@@ -20,6 +20,7 @@ export default function LessonDetail() {
   const { auth, isHydrating } = useAuth();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [completedExerciseIds, setCompletedExerciseIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,9 +30,17 @@ export default function LessonDetail() {
     const fetchLesson = async () => {
       try {
         setLoading(true);
-        const lesson = await getLesson(slug);
+        const [lesson, attempts] = await Promise.all([getLesson(slug), getMyAttempts()]);
         setLesson(lesson);
-        setExercises(lesson.exercises || []);
+        const exs = lesson.exercises || [];
+        setExercises(exs);
+        const exerciseIds = new Set(exs.map(e => e.id));
+        const completed = new Set(
+          attempts
+            .filter(a => exerciseIds.has(a.exercise.id) && a.status === 'completed')
+            .map(a => a.exercise.id)
+        );
+        setCompletedExerciseIds(completed);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load lesson');
       } finally {
@@ -55,22 +64,36 @@ export default function LessonDetail() {
     }
   };
 
-  const renderExercise = ({ item }: { item: Exercise }) => (
-    <View style={styles.exerciseCard}>
-      <Text style={styles.exercisePrompt}>{item.prompt}</Text>
-      <Text style={styles.exerciseInstructions}>{item.instructions}</Text>
-      <View style={styles.exerciseMeta}>
-        <Text style={styles.exerciseType}>{item.exercise_type.replace(/_/g, ' ')}</Text>
-        <Text style={styles.repetitions}>Target: {item.repetitions_target}</Text>
+  const exerciseTypeLabel = (type: string) => {
+    if (type === 'quiz') return 'Read Signs';
+    if (type === 'gesture_practice' || type === 'movement_drill') return 'Practice Signs';
+    return type.replace(/_/g, ' ');
+  };
+
+  const renderExercise = ({ item }: { item: Exercise }) => {
+    const done = completedExerciseIds.has(item.id);
+    const isQuiz = item.exercise_type === 'quiz';
+    return (
+      <View style={[styles.exerciseCard, done && styles.exerciseCardDone]}>
+        <View style={styles.exerciseHeader}>
+          <Text style={styles.exercisePrompt}>
+            {isQuiz ? 'Read the Sign' : item.prompt}
+          </Text>
+          {done && <Text style={styles.doneBadge}>✓ Done</Text>}
+        </View>
+        <Text style={styles.exerciseInstructions}>
+          {isQuiz ? 'Watch the gesture and identify what it means.' : item.instructions}
+        </Text>
+        <Text style={styles.exerciseType}>{exerciseTypeLabel(item.exercise_type)}</Text>
+        <TouchableOpacity
+          style={[styles.startButton, done && styles.retakeButton]}
+          onPress={() => handleStartExercise(item)}
+        >
+          <Text style={[styles.startButtonText, done && styles.retakeButtonText]}>{done ? 'Retake' : 'Start Exercise'}</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        style={styles.startButton}
-        onPress={() => handleStartExercise(item)}
-      >
-        <Text style={styles.startButtonText}>Start Exercise</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   if (isHydrating) {
     return (
@@ -216,31 +239,40 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  exerciseCardDone: {
+    opacity: 0.75,
+    borderLeftWidth: 4,
+    borderLeftColor: palette.accent,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   exercisePrompt: {
     fontSize: 16,
     fontWeight: 'bold',
     color: palette.text,
-    marginBottom: 8,
+    flex: 1,
+  },
+  doneBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: palette.accent,
+    marginLeft: 8,
   },
   exerciseInstructions: {
     fontSize: 14,
     color: palette.text,
-    marginBottom: 12,
-  },
-  exerciseMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   exerciseType: {
     fontSize: 12,
     color: palette.text,
     textTransform: 'capitalize',
     opacity: 0.75,
-  },
-  repetitions: {
-    fontSize: 12,
-    color: palette.text,
+    marginBottom: 12,
   },
   startButton: {
     backgroundColor: palette.text,
@@ -249,9 +281,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  retakeButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: palette.text,
+  },
   startButtonText: {
     color: palette.background,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  retakeButtonText: {
+    color: palette.text,
   },
 });

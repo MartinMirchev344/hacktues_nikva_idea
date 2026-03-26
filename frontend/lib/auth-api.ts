@@ -253,6 +253,15 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
   return response.json();
 }
 
+export async function getMyAttempts(): Promise<Attempt[]> {
+  const token = await getToken();
+  const response = await fetch(`${API_BASE_URL.replace('/auth', '')}/me/attempts/`, {
+    headers: { 'Authorization': `Token ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch attempts');
+  return response.json();
+}
+
 // Helper function to get token from stored auth
 async function getToken(): Promise<string> {
   if (!storedToken) {

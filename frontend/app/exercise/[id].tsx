@@ -408,13 +408,22 @@ export default function Exercise() {
 }
 
 function ExerciseCard({ attempt }: { attempt: any }) {
+  const isQuiz = attempt.exercise?.exercise_type === 'quiz';
   return (
     <View style={styles.card}>
-      <Text style={styles.prompt}>{attempt.exercise?.prompt || 'Practice this sign'}</Text>
-      <Text style={styles.cardBody}>{attempt.exercise?.instructions}</Text>
-      <Text style={styles.targetSign}>
-        Sign: <Text style={styles.targetSignValue}>{attempt.exercise?.expected_sign}</Text>
+      <Text style={styles.prompt}>
+        {isQuiz ? 'Read the Sign' : (attempt.exercise?.prompt || 'Practice this sign')}
       </Text>
+      <Text style={styles.cardBody}>
+        {isQuiz
+          ? 'Watch the gesture and type what phrase or word it represents.'
+          : attempt.exercise?.instructions}
+      </Text>
+      {!isQuiz && (
+        <Text style={styles.targetSign}>
+          Sign: <Text style={styles.targetSignValue}>{attempt.exercise?.expected_sign}</Text>
+        </Text>
+      )}
     </View>
   );
 }
