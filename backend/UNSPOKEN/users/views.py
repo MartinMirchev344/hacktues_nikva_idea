@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -57,3 +58,28 @@ class LeaderboardView(APIView):
         top_users = User.objects.order_by('-xp')[:20]
         serializer = UserProfileSerializer(top_users, many=True)
         return Response(serializer.data)
+
+
+class StreakStatusView(APIView):
+    def get(self, request):
+        user = request.user
+        today = timezone.now().date()
+        practiced_today = user.last_activity_date == today
+
+        import zoneinfo
+        local_now = timezone.now().astimezone(zoneinfo.ZoneInfo('Europe/Sofia'))
+        after_8pm = local_now.hour >= 20
+
+        if user.last_activity_date is None:
+            at_risk = False
+        elif practiced_today:
+            at_risk = False
+        else:
+            days_since = (today - user.last_activity_date).days
+            at_risk = days_since == 1 and after_8pm  # practiced yesterday, not yet today, past 8pm
+
+        return Response({
+            'streak': user.streak,
+            'practiced_today': practiced_today,
+            'at_risk': at_risk,
+        })
