@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -9,7 +10,7 @@ import {
   ScrollView,
   SafeAreaView,
 } from 'react-native';
-import { CameraView, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import {
@@ -22,6 +23,7 @@ import { palette } from '../../constants/colors';
 import { ScreenBackButton } from '../../components/screen-back-button';
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
+type QuizPhase = 'answering' | 'results';
 
 export default function Exercise() {
   const router = useRouter();
@@ -34,6 +36,11 @@ export default function Exercise() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Quiz mode state
+  const [quizPhase, setQuizPhase] = useState<QuizPhase>('answering');
+  const [quizAnswer, setQuizAnswer] = useState('');
+  const [quizCorrect, setQuizCorrect] = useState(false);
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -104,6 +111,35 @@ export default function Exercise() {
     }
   };
 
+  const handleQuizSubmit = async () => {
+    if (!quizAnswer.trim()) {
+      Alert.alert('Error', 'Please enter an answer');
+      return;
+    }
+    const correct =
+      quizAnswer.trim().toLowerCase() ===
+      attempt.exercise?.expected_sign?.toLowerCase();
+    setQuizCorrect(correct);
+    setQuizPhase('results');
+  };
+
+  const handleQuizSave = async () => {
+    setIsSubmitting(true);
+    try {
+      await submitAttempt(attempt.id, {
+        status: 'completed',
+        accuracy_score: quizCorrect ? 100 : 0,
+        detected_sign: quizAnswer.trim(),
+        completed_at: new Date().toISOString(),
+      });
+      router.back();
+    } catch {
+      Alert.alert('Error', 'Failed to save results. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (isHydrating) {
     return (
       <View style={styles.center}>
@@ -163,6 +199,74 @@ export default function Exercise() {
           <Text style={styles.btnText}>Allow Camera</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  const isQuiz = attempt.exercise?.exercise_type === 'quiz';
+
+  if (isQuiz) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+          <ScreenBackButton fallbackHref="/home" />
+          <ExerciseCard attempt={attempt} />
+
+          {/* Gesture video placeholder */}
+          <View style={styles.videoPlaceholder}>
+            <Text style={styles.videoPlaceholderIcon}>▶</Text>
+            <Text style={styles.videoPlaceholderText}>Gesture video coming soon</Text>
+          </View>
+
+          {quizPhase === 'answering' && (
+            <>
+              <Text style={styles.hint}>Watch the gesture above and type what it means</Text>
+              <TextInput
+                style={styles.quizInput}
+                placeholder="Type the phrase or word..."
+                placeholderTextColor={palette.text + '88'}
+                value={quizAnswer}
+                onChangeText={setQuizAnswer}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={styles.btn} onPress={handleQuizSubmit}>
+                <Text style={styles.btnText}>Check Answer</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {quizPhase === 'results' && (
+            <>
+              <View style={[styles.resultBanner, quizCorrect ? styles.bannerPass : styles.bannerFail]}>
+                <Text style={styles.resultIcon}>{quizCorrect ? '✓' : '✗'}</Text>
+                <View>
+                  <Text style={styles.resultTitle}>{quizCorrect ? 'Correct!' : 'Not quite'}</Text>
+                  {!quizCorrect && (
+                    <Text style={styles.resultSub}>
+                      Answer: {attempt.exercise?.expected_sign}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.resultActions}>
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => { setQuizAnswer(''); setQuizPhase('answering'); }}
+                >
+                  <Text style={styles.retryBtnText}>Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.submitBtn, isSubmitting && styles.btnDisabled]}
+                  onPress={handleQuizSave}
+                  disabled={isSubmitting}
+                >
+                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Save & Continue'}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
@@ -512,6 +616,31 @@ const styles = StyleSheet.create({
 
   feedbackList: { marginTop: 10, gap: 4 },
   feedbackItem: { fontSize: 14, color: palette.text, lineHeight: 20 },
+
+  // Quiz mode
+  videoPlaceholder: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 16,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: palette.accent,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  videoPlaceholderIcon: { fontSize: 40, color: palette.accent },
+  videoPlaceholderText: { fontSize: 15, color: palette.accent, fontWeight: '600' },
+  quizInput: {
+    backgroundColor: palette.surface,
+    borderWidth: 1.5,
+    borderColor: palette.accent,
+    padding: 15,
+    borderRadius: 12,
+    fontSize: 16,
+    color: palette.text,
+  },
 
   resultActions: { flexDirection: 'row', gap: 12 },
   retryBtn: {
