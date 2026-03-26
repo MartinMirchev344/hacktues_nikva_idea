@@ -3,13 +3,77 @@ import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
+  Image,
+  Dimensions,
+  StyleSheet,
 } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { getLessons, Lesson } from '../lib/auth-api';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const POSITIONS = [
+  SCREEN_WIDTH * 0.05,
+  SCREEN_WIDTH * 0.45,
+  SCREEN_WIDTH * 0.15,
+  SCREEN_WIDTH * 0.50,
+  SCREEN_WIDTH * 0.08,
+  SCREEN_WIDTH * 0.42,
+  SCREEN_WIDTH * 0.20,
+  SCREEN_WIDTH * 0.48,
+  SCREEN_WIDTH * 0.05,
+  SCREEN_WIDTH * 0.40,
+];
+
+const CLOUD_WIDTH = SCREEN_WIDTH * 0.48;
+const CLOUD_HEIGHT = 80;
+const VERTICAL_SPACING = 130;
+
+function CloudShape({ width = CLOUD_WIDTH, height = CLOUD_HEIGHT, color = '#FFFFFF' }: { width?: number; height?: number; color?: string }) {
+  const bumpSize = height * 0.75;
+  return (
+    <View style={{ width, height, position: 'relative' }}>
+      <View style={{
+        position: 'absolute',
+        width: bumpSize * 0.85,
+        height: bumpSize * 0.85,
+        borderRadius: bumpSize,
+        backgroundColor: color,
+        bottom: height * 0.28,
+        left: width * 0.08,
+      }} />
+      <View style={{
+        position: 'absolute',
+        width: bumpSize,
+        height: bumpSize,
+        borderRadius: bumpSize,
+        backgroundColor: color,
+        bottom: height * 0.32,
+        left: width * 0.28,
+      }} />
+      <View style={{
+        position: 'absolute',
+        width: bumpSize * 0.7,
+        height: bumpSize * 0.7,
+        borderRadius: bumpSize,
+        backgroundColor: color,
+        bottom: height * 0.24,
+        left: width * 0.56,
+      }} />
+      <View style={{
+        position: 'absolute',
+        width,
+        height: height * 0.55,
+        borderRadius: height * 0.3,
+        backgroundColor: color,
+        bottom: 0,
+      }} />
+    </View>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -19,148 +83,116 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth) {
-      return;
-    }
-
-    const loadLessons = async () => {
+    if (!auth) return;
+    const load = async () => {
       try {
         setLoading(true);
-        const data = await getLessons();
-        setLessons(data);
+        setLessons(await getLessons());
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load lessons');
       } finally {
         setLoading(false);
       }
     };
-
-    loadLessons();
+    load();
   }, [auth]);
 
-  if (!auth) {
-    return <Redirect href="/signup" />;
-  }
+  if (!auth) return <Redirect href="/signup" />;
 
-  const handleLogout = () => {
-    logout();
-    router.replace('/');
-  };
-
-  const renderLesson = ({ item }: { item: Lesson }) => {
-    const exerciseCount = item['exercise_count'] ?? item.exercises?.length ?? 0;
-    return (
-      <TouchableOpacity
-        style={styles.lessonCard}
-        onPress={() => router.push(`/lessons/${item.slug}`)}
-      >
-        <Text style={styles.lessonTitle}>{item.title}</Text>
-        <Text style={styles.lessonDescription}>{item.description}</Text>
-        <Text style={styles.lessonMeta}>
-          Difficulty: {item.difficulty} • {exerciseCount} exercises
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  const currentLessonIndex = 0;
+  const totalHeight = lessons.length * VERTICAL_SPACING + 200;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.welcome}>Welcome, {auth.user.username}</Text>
-      <Text style={styles.subtitle}>Choose a lesson to start practicing</Text>
-      <Text style={styles.meta}>XP: {auth.user.xp} • Streak: {auth.user.streak}</Text>
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a6fad' }]} />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#3a8fcc', top: '20%' }]} />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#5aaee0', top: '45%' }]} />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#7ec8f0', top: '65%' }]} />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#a8ddf5', top: '80%' }]} />
+
+      <View style={styles.header}>
+        <Text style={styles.xpText}>⭐ {auth.user.xp} XP</Text>
+        <Text style={styles.streakText}>🔥 {auth.user.streak} day streak</Text>
+        <TouchableOpacity onPress={() => { logout(); router.replace('/'); }}>
+          <Text style={styles.logoutText}>Log out</Text>
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#BA806A" style={{ marginTop: 20 }} />
+        <ActivityIndicator size="large" color="#fff" style={{ marginTop: 60 }} />
       ) : error ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : (
-        <FlatList
-          data={lessons}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderLesson}
-          contentContainerStyle={styles.list}
+        <ScrollView
+          contentContainerStyle={{ height: totalHeight, position: 'relative' }}
           showsVerticalScrollIndicator={false}
-        />
-      )}
+        >
+          {lessons.map((lesson, index) => {
+            const left = POSITIONS[index % POSITIONS.length];
+            const top = index * VERTICAL_SPACING + 20;
+            const isCurrent = index === currentLessonIndex;
 
-      <TouchableOpacity style={styles.button} onPress={handleLogout}>
-        <Text style={styles.buttonText}>Log Out</Text>
-      </TouchableOpacity>
+            return (
+              <View key={lesson.id} style={{ position: 'absolute', left, top }}>
+                {isCurrent && (
+                  <Image
+                    source={require('../assets/beaver.png')}
+                    style={styles.beaver}
+                    resizeMode="contain"
+                  />
+                )}
+                <TouchableOpacity
+                  onPress={() => router.push(`/lessons/${lesson.slug}`)}
+                  activeOpacity={0.85}
+                >
+                  <CloudShape color={isCurrent ? '#FFE97A' : '#FFFFFF'} />
+                  <View style={styles.cloudLabel}>
+                    <Text style={styles.cloudTitle} numberOfLines={1}>{lesson.title}</Text>
+                    <Text style={styles.cloudMeta}>
+                      {lesson.difficulty} • {(lesson as any).exercise_count ?? 0} exercises
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    backgroundColor: '#EFEADD',
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 52,
+    paddingBottom: 12,
+    zIndex: 10,
   },
-  welcome: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 4,
-    textAlign: 'center',
+  xpText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  streakText: { color: '#FFE97A', fontWeight: 'bold', fontSize: 15 },
+  logoutText: { color: '#ffffff99', fontSize: 13 },
+  beaver: {
+    width: 70,
+    height: 70,
+    position: 'absolute',
+    top: -65,
+    left: CLOUD_WIDTH * 0.3,
+    zIndex: 10,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#BA806A',
-    marginBottom: 12,
-    textAlign: 'center',
+  cloudLabel: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    width: CLOUD_WIDTH,
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
-  meta: {
-    fontSize: 14,
-    color: '#6D7A71',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  list: {
-    paddingBottom: 20,
-  },
-  lessonCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  lessonTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 6,
-  },
-  lessonDescription: {
-    fontSize: 14,
-    color: '#6D7A71',
-    marginBottom: 8,
-  },
-  lessonMeta: {
-    fontSize: 12,
-    color: '#BA806A',
-  },
-  errorText: {
-    color: '#BA806A',
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  button: {
-    marginTop: 12,
-    backgroundColor: '#BA806A',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignSelf: 'center',
-  },
-  buttonText: {
-    color: '#EFEADD',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+  cloudTitle: { fontWeight: 'bold', fontSize: 14, color: '#3a5a6a', textAlign: 'center' },
+  cloudMeta: { fontSize: 11, color: '#5a7a8a', textAlign: 'center' },
+  errorText: { color: '#fff', textAlign: 'center', marginTop: 40 },
 });
