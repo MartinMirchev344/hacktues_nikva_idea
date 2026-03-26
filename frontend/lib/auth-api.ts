@@ -219,6 +219,12 @@ export type VerifyResult = {
   speed_score: number;
   coach_summary: string;
   feedback_items: string[];
+  candidates?: Array<{
+    sign: string;
+    score: number;
+    model_label?: string;
+    class_index?: number;
+  }>;
 };
 
 export async function verifySign(attemptId: number, videoUri: string): Promise<VerifyResult> {

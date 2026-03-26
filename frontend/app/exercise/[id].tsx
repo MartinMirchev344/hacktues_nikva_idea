@@ -239,6 +239,8 @@ export default function Exercise() {
               </View>
             </View>
 
+            <PredictionCard result={result} />
+
             <ScoresCard attempt={{
               accuracy_score: result.accuracy_score,
               speed_score: result.speed_score,
@@ -289,6 +291,39 @@ function ExerciseCard({ attempt }: { attempt: any }) {
       <Text style={styles.targetSign}>
         Sign: <Text style={styles.targetSignValue}>{attempt.exercise?.expected_sign}</Text>
       </Text>
+    </View>
+  );
+}
+
+function PredictionCard({ result }: { result: VerifyResult }) {
+  const alternatives = (result.candidates ?? []).filter(
+    (candidate) => candidate.sign !== result.detected_sign
+  );
+
+  return (
+    <View style={styles.predictionCard}>
+      <Text style={styles.predictionEyebrow}>Model Prediction</Text>
+      <Text style={styles.predictionSign}>
+        {result.detected_sign || 'No sign detected'}
+      </Text>
+      <Text style={styles.predictionConfidence}>
+        Confidence {result.confidence.toFixed(0)}%
+      </Text>
+
+      {alternatives.length > 0 ? (
+        <View style={styles.alternativePredictions}>
+          <Text style={styles.alternativeTitle}>Other guesses</Text>
+          {alternatives.slice(0, 2).map((candidate) => (
+            <View
+              key={`${candidate.sign}-${candidate.class_index ?? candidate.model_label ?? 'candidate'}`}
+              style={styles.alternativeRow}
+            >
+              <Text style={styles.alternativeSign}>{candidate.sign}</Text>
+              <Text style={styles.alternativeScore}>{candidate.score.toFixed(0)}%</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -432,6 +467,36 @@ const styles = StyleSheet.create({
   resultIcon: { fontSize: 36, color: '#FFF', fontWeight: 'bold' },
   resultTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
   resultSub: { fontSize: 14, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  predictionCard: {
+    backgroundColor: '#6D7A71',
+    borderRadius: 16,
+    padding: 18,
+    gap: 6,
+  },
+  predictionEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(239,234,221,0.75)',
+  },
+  predictionSign: { fontSize: 28, fontWeight: 'bold', color: '#EFEADD' },
+  predictionConfidence: { fontSize: 15, color: '#EFEADD' },
+  alternativePredictions: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(239,234,221,0.2)',
+    gap: 8,
+  },
+  alternativeTitle: { fontSize: 13, fontWeight: '700', color: 'rgba(239,234,221,0.8)' },
+  alternativeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  alternativeSign: { fontSize: 15, color: '#EFEADD' },
+  alternativeScore: { fontSize: 15, fontWeight: '700', color: '#EFEADD' },
 
   scoreRow: {
     flexDirection: 'row',
