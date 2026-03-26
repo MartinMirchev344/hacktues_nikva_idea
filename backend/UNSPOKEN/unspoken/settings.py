@@ -67,7 +67,7 @@ MIDDLEWARE = [
 if HAS_CORSHEADERS:
     MIDDLEWARE.insert(1, 'corsheaders.middleware.CorsMiddleware')
 
-ROOT_URLCONF = 'unspoken.urls'
+ROOT_URLCONF = 'UNSPOKEN.urls'
 
 TEMPLATES = [
     {
@@ -84,7 +84,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'unspoken.wsgi.application'
+WSGI_APPLICATION = 'UNSPOKEN.wsgi.application'
 
 DATABASES = {
     'default': {
