@@ -3,6 +3,9 @@ from datetime import timedelta
 from importlib.util import find_spec
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+if find_spec('dotenv') is not None:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")
 HAS_CORSHEADERS = find_spec('corsheaders') is not None
 HAS_SIMPLEJWT = find_spec('rest_framework_simplejwt') is not None
 
@@ -23,6 +26,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'users',
     'lessons',
+    'recognition',
 ]
 
 if HAS_CORSHEADERS:
