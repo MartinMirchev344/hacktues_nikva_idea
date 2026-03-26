@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,23 +6,38 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  SafeAreaView,
 } from 'react-native';
+import { CameraView, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
-import { getAttemptDetail, submitAttempt } from '../../lib/auth-api';
+import {
+  getAttemptDetail,
+  submitAttempt,
+  verifySign,
+  VerifyResult,
+} from '../../lib/auth-api';
+
+type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 
 export default function Exercise() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { auth } = useAuth();
+
   const [attempt, setAttempt] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [result, setResult] = useState<VerifyResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
     if (!auth || !id) return;
-
     const fetchAttempt = async () => {
       try {
         setLoading(true);
@@ -34,29 +49,54 @@ export default function Exercise() {
         setLoading(false);
       }
     };
-
     fetchAttempt();
   }, [auth, id]);
 
-  const handleCompleteExercise = async () => {
-    if (!auth || !attempt) return;
+  const startRecording = async () => {
+    if (!cameraRef.current) return;
+    setPhase('recording');
+    try {
+      const video = await cameraRef.current.recordAsync({ maxDuration: 10 });
+      if (video?.uri) {
+        setPhase('uploading');
+        const res = await verifySign(attempt.id, video.uri);
+        setResult(res);
+        setPhase('results');
+      } else {
+        setPhase('idle');
+      }
+    } catch (err) {
+      setPhase('idle');
+      Alert.alert('Error', 'Failed to process video. Please try again.');
+    }
+  };
 
+  const stopRecording = () => {
+    cameraRef.current?.stopRecording();
+  };
+
+  const retryRecording = () => {
+    setResult(null);
+    setPhase('idle');
+  };
+
+  const handleSubmit = async () => {
+    if (!result) return;
     setIsSubmitting(true);
     try {
-      // Placeholder: submit dummy data
-      // In real app, this would be actual tracking data and scores
       await submitAttempt(attempt.id, {
-        accuracy_score: 85,
-        speed_score: 90,
-        handshape_score: 80,
-        detected_sign: 'example_sign',
-        tracking_data: { placeholder: true },
+        status: 'completed',
+        accuracy_score: result.accuracy_score,
+        speed_score: result.speed_score,
+        handshape_score: result.handshape_score,
+        detected_sign: result.detected_sign,
+        coach_summary: result.coach_summary,
+        feedback_items: result.feedback_items,
+        completed_at: new Date().toISOString(),
       });
-      Alert.alert('Success', 'Exercise completed! You earned 20 XP.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      router.back();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to submit exercise');
+      Alert.alert('Error', 'Failed to save results. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -65,7 +105,7 @@ export default function Exercise() {
   if (!auth) {
     return (
       <View style={styles.center}>
-        <Text>Please log in to practice exercises.</Text>
+        <Text style={styles.errorText}>Please log in to practice exercises.</Text>
       </View>
     );
   }
@@ -83,303 +123,341 @@ export default function Exercise() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{error || 'Exercise not found'}</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Go Back</Text>
+        <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
+          <Text style={styles.btnText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Already completed
+  if (attempt.status !== 'in_progress') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={styles.title}>Exercise Complete</Text>
+          <ExerciseCard attempt={attempt} />
+          {attempt.accuracy_score !== null && <ScoresCard attempt={attempt} />}
+          {attempt.coach_summary && <FeedbackCard attempt={attempt} />}
+          <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
+            <Text style={styles.btnText}>Back to Lesson</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Camera permission denied
+  if (permission && !permission.granted) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>Camera access is required to practice signs.</Text>
+        <TouchableOpacity style={styles.btn} onPress={requestPermission}>
+          <Text style={styles.btnText}>Allow Camera</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Exercise Practice</Text>
-        <Text style={styles.status}>Status: {attempt.status}</Text>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+        {/* Exercise prompt */}
+        <ExerciseCard attempt={attempt} />
 
-      <View style={styles.exerciseCard}>
-        <Text style={styles.prompt}>
-          {attempt.exercise?.prompt || 'Practice this gesture'}
-        </Text>
-        <Text style={styles.instructions}>
-          {attempt.exercise?.instructions || 'Follow the guide to perform the sign correctly.'}
-        </Text>
-        <Text style={styles.exerciseType}>
-          Type: {attempt.exercise?.exercise_type.replace(/_/g, ' ') || 'Unknown'}
-        </Text>
-        <Text style={styles.target}>
-          Target: {attempt.exercise?.expected_sign || 'Sign'}
-        </Text>
-        <Text style={styles.repetitions}>
-          Repetitions: {attempt.exercise?.repetitions_target || 5}
-        </Text>
-      </View>
+        {/* Camera + controls */}
+        {phase !== 'results' && (
+          <View style={styles.cameraWrapper}>
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing="front"
+              mode="video"
+            />
 
-      {attempt.accuracy_score !== null && (
-        <View style={styles.scoresCard}>
-          <Text style={styles.scoresTitle}>Scores</Text>
-          <View style={styles.scoreRow}>
-            <Text style={styles.scoreLabel}>Accuracy:</Text>
-            <Text style={styles.scoreValue}>{attempt.accuracy_score.toFixed(1)}%</Text>
+            {/* Recording indicator */}
+            {phase === 'recording' && (
+              <View style={styles.recordingBadge}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingText}>Recording...</Text>
+              </View>
+            )}
+
+            {/* Uploading overlay */}
+            {phase === 'uploading' && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="large" color="#EFEADD" />
+                <Text style={styles.uploadingText}>Analysing your sign...</Text>
+              </View>
+            )}
           </View>
-          {attempt.speed_score !== null && (
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreLabel}>Speed:</Text>
-              <Text style={styles.scoreValue}>{attempt.speed_score.toFixed(1)}%</Text>
-            </View>
-          )}
-          {attempt.handshape_score !== null && (
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreLabel}>Handshape:</Text>
-              <Text style={styles.scoreValue}>{attempt.handshape_score.toFixed(1)}%</Text>
-            </View>
-          )}
-          {attempt.score !== null && (
-            <View style={styles.scoreRow}>
-              <Text style={[styles.scoreLabel, styles.overallScore]}>Overall:</Text>
-              <Text style={[styles.scoreValue, styles.overallScore]}>
-                {attempt.score.toFixed(1)}%
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
+        )}
 
-      {attempt.status === 'in_progress' && (
-        <View style={styles.trackingArea}>
-          <Text style={styles.trackingTitle}>Hand Tracking Area</Text>
-          <View style={styles.cameraPlaceholder}>
-            <Text style={styles.placeholderText}>
-              Camera and hand-tracking integration coming soon!
-            </Text>
-            <Text style={styles.placeholderText}>
-              This area will show live camera feed and pose detection.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {attempt.coach_summary && (
-        <View style={styles.feedbackCard}>
-          <Text style={styles.feedbackTitle}>Coach Summary</Text>
-          <Text style={styles.feedbackText}>{attempt.coach_summary}</Text>
-        </View>
-      )}
-
-      {attempt.status === 'in_progress' && (
-        <TouchableOpacity
-          style={[styles.completeButton, isSubmitting && styles.disabledButton]}
-          onPress={handleCompleteExercise}
-          disabled={isSubmitting}
-        >
-          <Text style={styles.completeButtonText}>
-            {isSubmitting ? 'Submitting...' : 'Complete Exercise'}
+        {/* Record / Stop button */}
+        {phase === 'idle' && (
+          <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
+            <View style={styles.recordBtnInner} />
+          </TouchableOpacity>
+        )}
+        {phase === 'recording' && (
+          <TouchableOpacity style={styles.stopBtn} onPress={stopRecording}>
+            <View style={styles.stopBtnInner} />
+          </TouchableOpacity>
+        )}
+        {phase === 'idle' && (
+          <Text style={styles.hint}>
+            Tap the button and sign "{attempt.exercise?.expected_sign}"
           </Text>
-        </TouchableOpacity>
-      )}
+        )}
+        {phase === 'recording' && (
+          <Text style={styles.hint}>Tap to stop (max 10 seconds)</Text>
+        )}
 
-      {attempt.status !== 'in_progress' && (
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backText}>Back to Lesson</Text>
-        </TouchableOpacity>
+        {/* Results */}
+        {phase === 'results' && result && (
+          <>
+            <View style={[styles.resultBanner, result.is_correct ? styles.bannerPass : styles.bannerFail]}>
+              <Text style={styles.resultIcon}>{result.is_correct ? '✓' : '✗'}</Text>
+              <View>
+                <Text style={styles.resultTitle}>
+                  {result.is_correct ? 'Correct!' : 'Not quite'}
+                </Text>
+                {result.detected_sign ? (
+                  <Text style={styles.resultSub}>
+                    Detected: {result.detected_sign}
+                    {result.confidence > 0 ? ` (${result.confidence.toFixed(0)}%)` : ''}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            <ScoresCard attempt={{
+              accuracy_score: result.accuracy_score,
+              speed_score: result.speed_score,
+              handshape_score: result.handshape_score,
+              score: (result.accuracy_score + result.speed_score + result.handshape_score) / 3,
+            }} />
+
+            {result.coach_summary ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Coach Feedback</Text>
+                <Text style={styles.cardBody}>{result.coach_summary}</Text>
+                {result.feedback_items.length > 0 && (
+                  <View style={styles.feedbackList}>
+                    {result.feedback_items.map((item, i) => (
+                      <Text key={i} style={styles.feedbackItem}>• {item}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
+
+            <View style={styles.resultActions}>
+              <TouchableOpacity style={styles.retryBtn} onPress={retryRecording}>
+                <Text style={styles.retryBtnText}>Try Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.submitBtn, isSubmitting && styles.btnDisabled]}
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.btnText}>
+                  {isSubmitting ? 'Saving...' : 'Save & Continue'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ExerciseCard({ attempt }: { attempt: any }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.prompt}>{attempt.exercise?.prompt || 'Practice this sign'}</Text>
+      <Text style={styles.cardBody}>{attempt.exercise?.instructions}</Text>
+      <Text style={styles.targetSign}>
+        Sign: <Text style={styles.targetSignValue}>{attempt.exercise?.expected_sign}</Text>
+      </Text>
+    </View>
+  );
+}
+
+function ScoresCard({ attempt }: { attempt: any }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Scores</Text>
+      {attempt.accuracy_score != null && (
+        <ScoreRow label="Accuracy" value={attempt.accuracy_score} />
+      )}
+      {attempt.speed_score != null && (
+        <ScoreRow label="Speed" value={attempt.speed_score} />
+      )}
+      {attempt.handshape_score != null && (
+        <ScoreRow label="Handshape" value={attempt.handshape_score} />
+      )}
+      {attempt.score != null && (
+        <ScoreRow label="Overall" value={attempt.score} bold />
       )}
     </View>
   );
 }
 
+function ScoreRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
+  return (
+    <View style={styles.scoreRow}>
+      <Text style={[styles.scoreLabel, bold && styles.scoreLabelBold]}>{label}</Text>
+      <Text style={[styles.scoreValue, bold && styles.scoreValueBold]}>
+        {value.toFixed(1)}%
+      </Text>
+    </View>
+  );
+}
+
+function FeedbackCard({ attempt }: { attempt: any }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Coach Feedback</Text>
+      <Text style={styles.cardBody}>{attempt.coach_summary}</Text>
+      {attempt.feedback_items?.map((item: string, i: number) => (
+        <Text key={i} style={styles.feedbackItem}>• {item}</Text>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#EFEADD',
+  container: { flex: 1, backgroundColor: '#EFEADD' },
+  scroll: { padding: 16, gap: 16 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#EFEADD', padding: 24 },
+
+  title: { fontSize: 22, fontWeight: 'bold', color: '#6D7A71', textAlign: 'center', marginBottom: 8 },
+  loadingText: { marginTop: 12, fontSize: 16, color: '#6D7A71' },
+  errorText: { fontSize: 16, color: '#BA806A', textAlign: 'center', marginBottom: 16 },
+  hint: { fontSize: 14, color: '#6D7A71', textAlign: 'center', marginTop: 4 },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  center: {
-    flex: 1,
+  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#6D7A71', marginBottom: 12 },
+  cardBody: { fontSize: 15, color: '#6D7A71', lineHeight: 22 },
+  prompt: { fontSize: 18, fontWeight: 'bold', color: '#6D7A71', marginBottom: 6 },
+  targetSign: { fontSize: 14, color: '#6D7A71', marginTop: 8 },
+  targetSignValue: { fontWeight: 'bold', color: '#BA806A' },
+
+  // Camera
+  cameraWrapper: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  camera: { flex: 1 },
+  recordingBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 6,
+  },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#E55' },
+  recordingText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#EFEADD',
+    gap: 12,
   },
-  header: {
-    marginBottom: 16,
+  uploadingText: { color: '#EFEADD', fontSize: 16, fontWeight: '600' },
+
+  // Record / stop buttons
+  recordBtn: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#BA806A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    textAlign: 'center',
+  recordBtnInner: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFEADD' },
+  stopBtn: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#BA806A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  status: {
-    fontSize: 16,
-    color: '#BA806A',
-    textAlign: 'center',
-    textTransform: 'capitalize',
-  },
-  exerciseCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
+  stopBtnInner: { width: 28, height: 28, borderRadius: 4, backgroundColor: '#EFEADD' },
+
+  // Results
+  resultBanner: {
     borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  prompt: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 8,
-  },
-  instructions: {
-    fontSize: 16,
-    color: '#6D7A71',
-    marginBottom: 8,
-  },
-  exerciseType: {
-    fontSize: 14,
-    color: '#BA806A',
-    marginBottom: 8,
-    textTransform: 'capitalize',
-  },
-  target: {
-    fontSize: 14,
-    color: '#6D7A71',
-    marginBottom: 8,
-  },
-  repetitions: {
-    fontSize: 14,
-    color: '#6D7A71',
-  },
-  scoresCard: {
-    backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
-  scoresTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 12,
-  },
+  bannerPass: { backgroundColor: '#4CAF50' },
+  bannerFail: { backgroundColor: '#BA806A' },
+  resultIcon: { fontSize: 36, color: '#FFF', fontWeight: 'bold' },
+  resultTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
+  resultSub: { fontSize: 14, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+
   scoreRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingBottom: 8,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#EFEADD',
   },
-  scoreLabel: {
-    fontSize: 14,
-    color: '#6D7A71',
-  },
-  scoreValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#BA806A',
-  },
-  overallScore: {
-    fontWeight: 'bold',
-    color: '#6D7A71',
-  },
-  trackingArea: {
+  scoreLabel: { fontSize: 14, color: '#6D7A71' },
+  scoreLabelBold: { fontWeight: 'bold' },
+  scoreValue: { fontSize: 14, color: '#BA806A', fontWeight: '600' },
+  scoreValueBold: { color: '#6D7A71', fontWeight: 'bold' },
+
+  feedbackList: { marginTop: 10, gap: 4 },
+  feedbackItem: { fontSize: 14, color: '#6D7A71', lineHeight: 20 },
+
+  resultActions: { flexDirection: 'row', gap: 12 },
+  retryBtn: {
     flex: 1,
-    marginBottom: 16,
-  },
-  trackingTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  cameraPlaceholder: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#BA806A',
+    paddingVertical: 14,
     borderRadius: 12,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  placeholderText: {
-    fontSize: 16,
-    color: '#6D7A71',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  feedbackCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  feedbackTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#6D7A71',
-    marginBottom: 8,
-  },
-  feedbackText: {
-    fontSize: 14,
-    color: '#6D7A71',
-    lineHeight: 20,
-  },
-  completeButton: {
+  retryBtnText: { color: '#BA806A', fontSize: 16, fontWeight: 'bold' },
+  submitBtn: { flex: 1 },
+
+  btn: {
     backgroundColor: '#BA806A',
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
-  disabledButton: {
-    backgroundColor: '#CCCCCC',
-  },
-  completeButtonText: {
-    color: '#EFEADD',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6D7A71',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#BA806A',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  backButton: {
-    backgroundColor: '#BA806A',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  backText: {
-    color: '#EFEADD',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  btnDisabled: { backgroundColor: '#CCCCCC' },
+  btnText: { color: '#EFEADD', fontSize: 16, fontWeight: 'bold' },
 });

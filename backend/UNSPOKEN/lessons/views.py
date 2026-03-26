@@ -11,6 +11,7 @@ from .serializers import (
     AttemptSerializer, AttemptCreateUpdateSerializer,
     UserLessonProgressSerializer,
 )
+from .sign_verifier import verify_sign
 
 XP_PER_LESSON = 20
 
@@ -153,3 +154,38 @@ class UserProgressView(generics.ListAPIView):
 
     def get_queryset(self):
         return UserLessonProgress.objects.filter(user=self.request.user).select_related('lesson')
+
+
+class VerifySignView(APIView):
+    """
+    POST /api/attempts/<id>/verify/
+    Send a camera frame to the hand-tracking model and get back verification results.
+
+    Request: multipart/form-data
+        image — the camera frame (JPEG/PNG)
+
+    Response 200:
+    {
+        "is_correct": true,
+        "confidence": 91.5,
+        "detected_sign": "hello",
+        "accuracy_score": 90.0,
+        "handshape_score": 93.0,
+        "speed_score": 100.0,
+        "coach_summary": "Great job!",
+        "feedback_items": []
+    }
+    """
+
+    def post(self, request, pk):
+        try:
+            attempt = Attempt.objects.select_related('exercise').get(pk=pk, user=request.user)
+        except Attempt.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        video = request.FILES.get('video')
+        if not video:
+            return Response({"detail": "No video provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = verify_sign(video, attempt.exercise.expected_sign)
+        return Response(result, status=status.HTTP_200_OK)

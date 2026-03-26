@@ -210,6 +210,43 @@ export async function submitAttempt(
   return response.json();
 }
 
+export type VerifyResult = {
+  is_correct: boolean;
+  confidence: number;
+  detected_sign: string;
+  accuracy_score: number;
+  handshape_score: number;
+  speed_score: number;
+  coach_summary: string;
+  feedback_items: string[];
+};
+
+export async function verifySign(attemptId: number, videoUri: string): Promise<VerifyResult> {
+  const token = await getToken();
+  const formData = new FormData();
+  formData.append('video', {
+    uri: videoUri,
+    name: 'sign.mp4',
+    type: 'video/mp4',
+  } as any);
+
+  const response = await fetch(
+    `${API_BASE_URL.replace('/auth', '')}/attempts/${attemptId}/verify/`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to verify sign');
+  }
+  return response.json();
+}
+
 // Helper function to get token from stored auth
 async function getToken(): Promise<string> {
   if (!storedToken) {
