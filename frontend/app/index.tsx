@@ -1,18 +1,26 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
+import { Redirect } from 'expo-router';
+import { useAuth } from '../context/auth-context';
 
 export default function Index() {
+  const { auth } = useAuth();
+
+  if (auth) {
+    return <Redirect href="/home" />;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to Unspoken</Text>
       <Text style={styles.subtitle}>Sign in or sign up to continue</Text>
       <View style={styles.buttonContainer}>
-        <Link href="/signup" asChild>
+        <Link href={{ pathname: '/signup', params: { mode: 'login' } }} asChild>
           <TouchableOpacity style={styles.button}>
             <Text style={styles.buttonText}>Log In</Text>
           </TouchableOpacity>
         </Link>
-        <Link href="/signup" asChild>
+        <Link href={{ pathname: '/signup', params: { mode: 'signup' } }} asChild>
           <TouchableOpacity style={styles.button}>
             <Text style={styles.buttonText}>Sign Up</Text>
           </TouchableOpacity>

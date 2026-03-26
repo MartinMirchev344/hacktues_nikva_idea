@@ -1,14 +1,40 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { useState } from 'react';
-import { Link } from 'expo-router';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
+import { useEffect, useState } from 'react';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { useAuth } from '../context/auth-context';
+import { login, register } from '../lib/auth-api';
 
 export default function Auth() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const { setAuth } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleAuth = () => {
+  useEffect(() => {
+    if (params.mode === 'signup') {
+      setIsLogin(false);
+      return;
+    }
+    if (params.mode === 'login') {
+      setIsLogin(true);
+    }
+  }, [params.mode]);
+
+  const handleAuth = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -17,8 +43,22 @@ export default function Auth() {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
-    // TODO: Implement auth logic
-    Alert.alert('Success', `${isLogin ? 'Logged in' : 'Account created'} successfully!`);
+
+    try {
+      setIsSubmitting(true);
+      const authResponse = isLogin
+        ? await login({ email, password })
+        : await register({ email, password, confirmPassword });
+      setAuth(authResponse);
+      Alert.alert('Success', `${isLogin ? 'Logged in' : 'Account created'} successfully!`);
+      router.replace('/home');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to authenticate right now.';
+      Alert.alert('Error', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -70,8 +110,16 @@ export default function Auth() {
           />
         )}
 
-        <TouchableOpacity style={styles.button} onPress={handleAuth}>
-          <Text style={styles.buttonText}>{isLogin ? 'Log In' : 'Sign Up'}</Text>
+        <TouchableOpacity
+          style={[styles.button, isSubmitting && styles.buttonDisabled]}
+          onPress={handleAuth}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#EFEADD" />
+          ) : (
+            <Text style={styles.buttonText}>{isLogin ? 'Log In' : 'Sign Up'}</Text>
+          )}
         </TouchableOpacity>
 
         <Link href="/" style={styles.backLink}>
@@ -152,6 +200,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#EFEADD',
