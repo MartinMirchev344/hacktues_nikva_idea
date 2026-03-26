@@ -95,6 +95,7 @@ export type Lesson = {
   estimated_duration_minutes: number;
   is_published: boolean;
   exercises?: Exercise[];
+  exercise_count?: number;
   created_at: string;
   updated_at: string;
 };
@@ -119,6 +120,14 @@ export type Attempt = {
 };
 
 // Lesson API
+export async function getLessons(): Promise<Lesson[]> {
+  const response = await fetch(`${API_BASE_URL.replace('/auth', '')}/lessons/`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch lessons');
+  }
+  return response.json();
+}
+
 export async function getLesson(slug: string): Promise<Lesson> {
   const response = await fetch(
     `${API_BASE_URL.replace('/auth', '')}/lessons/${slug}/`
