@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Audio } from 'expo-av';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import {
@@ -27,7 +28,7 @@ type QuizPhase = 'answering' | 'results';
 
 export default function Exercise() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, isLastExercise } = useLocalSearchParams<{ id: string; isLastExercise?: string }>();
   const { auth, isHydrating } = useAuth();
 
   const [attempt, setAttempt] = useState<any>(null);
@@ -44,6 +45,21 @@ export default function Exercise() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
+
+  const playSound = useCallback(async (type: 'correct' | 'fail' | 'lesson_complete') => {
+    const sources = {
+      correct: require('../../assets/sounds/correct.mp3'),
+      fail: require('../../assets/sounds/fail.mp3'),
+      lesson_complete: require('../../assets/sounds/lesson_complete.mp3'),
+    };
+    try {
+      const { sound } = await Audio.Sound.createAsync(sources[type]);
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.isLoaded && status.didJustFinish) sound.unloadAsync();
+      });
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!auth || !id) return;
@@ -71,6 +87,7 @@ export default function Exercise() {
         const res = await verifySign(attempt.id, video.uri);
         setResult(res);
         setPhase('results');
+        playSound(res.is_correct ? 'correct' : 'fail');
       } else {
         setPhase('idle');
       }
@@ -103,6 +120,7 @@ export default function Exercise() {
         feedback_items: result.feedback_items,
         completed_at: new Date().toISOString(),
       });
+      if (isLastExercise === '1' && result.is_correct) await playSound('lesson_complete');
       router.back();
     } catch (err) {
       Alert.alert('Error', 'Failed to save results. Please try again.');
@@ -121,6 +139,7 @@ export default function Exercise() {
       attempt.exercise?.expected_sign?.toLowerCase();
     setQuizCorrect(correct);
     setQuizPhase('results');
+    playSound(correct ? 'correct' : 'fail');
   };
 
   const handleQuizSave = async () => {
@@ -132,6 +151,7 @@ export default function Exercise() {
         detected_sign: quizAnswer.trim(),
         completed_at: new Date().toISOString(),
       });
+      if (isLastExercise === '1' && quizCorrect) await playSound('lesson_complete');
       router.back();
     } catch {
       Alert.alert('Error', 'Failed to save results. Please try again.');

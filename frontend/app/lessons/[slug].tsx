@@ -47,7 +47,9 @@ export default function LessonDetail() {
 
     try {
       const attempt = await createAttempt(exercise.id);
-      router.push(`/exercise/${attempt.id}`);
+      const maxOrder = Math.max(...exercises.map(e => e.order));
+      const isLast = exercise.order === maxOrder;
+      router.push({ pathname: `/exercise/${attempt.id}`, params: { isLastExercise: isLast ? '1' : '0' } });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start exercise');
     }
