@@ -10,7 +10,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { CameraView, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import {
   getAttemptDetail,
@@ -19,13 +19,14 @@ import {
   VerifyResult,
 } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
+import { ScreenBackButton } from '../../components/screen-back-button';
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 
 export default function Exercise() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { auth } = useAuth();
+  const { auth, isHydrating } = useAuth();
 
   const [attempt, setAttempt] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -103,12 +104,17 @@ export default function Exercise() {
     }
   };
 
-  if (!auth) {
+  if (isHydrating) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Please log in to practice exercises.</Text>
+        <ActivityIndicator size="large" color={palette.text} />
+        <Text style={styles.loadingText}>Loading exercise...</Text>
       </View>
     );
+  }
+
+  if (!auth) {
+    return <Redirect href="/signup" />;
   }
 
   if (loading) {
@@ -123,10 +129,8 @@ export default function Exercise() {
   if (error || !attempt) {
     return (
       <View style={styles.center}>
+        <ScreenBackButton fallbackHref="/home" style={styles.inlineBackButton} />
         <Text style={styles.errorText}>{error || 'Exercise not found'}</Text>
-        <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
-          <Text style={styles.btnText}>Go Back</Text>
-        </TouchableOpacity>
       </View>
     );
   }
@@ -136,6 +140,7 @@ export default function Exercise() {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scroll}>
+          <ScreenBackButton fallbackHref="/home" />
           <Text style={styles.title}>Exercise Complete</Text>
           <ExerciseCard attempt={attempt} />
           {attempt.accuracy_score !== null && <ScoresCard attempt={attempt} />}
@@ -152,6 +157,7 @@ export default function Exercise() {
   if (permission && !permission.granted) {
     return (
       <View style={styles.center}>
+        <ScreenBackButton fallbackHref="/home" style={styles.inlineBackButton} />
         <Text style={styles.errorText}>Camera access is required to practice signs.</Text>
         <TouchableOpacity style={styles.btn} onPress={requestPermission}>
           <Text style={styles.btnText}>Allow Camera</Text>
@@ -163,6 +169,7 @@ export default function Exercise() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+        <ScreenBackButton fallbackHref="/home" />
         {/* Exercise prompt */}
         <ExerciseCard attempt={attempt} />
 
@@ -333,6 +340,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.background },
   scroll: { padding: 16, gap: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.background, padding: 24 },
+  inlineBackButton: { marginBottom: 20 },
 
   title: { fontSize: 22, fontWeight: 'bold', color: palette.text, textAlign: 'center', marginBottom: 8 },
   loadingText: { marginTop: 12, fontSize: 16, color: palette.text },

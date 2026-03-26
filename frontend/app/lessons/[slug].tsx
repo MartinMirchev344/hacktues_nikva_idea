@@ -8,15 +8,16 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import { getLesson, createAttempt, Lesson, Exercise } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
+import { ScreenBackButton } from '../../components/screen-back-button';
 
 export default function LessonDetail() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { auth } = useAuth();
+  const { auth, isHydrating } = useAuth();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,12 +70,17 @@ export default function LessonDetail() {
     </View>
   );
 
-  if (!auth) {
+  if (isHydrating) {
     return (
       <View style={styles.center}>
-        <Text>Please log in to view this lesson.</Text>
+        <ActivityIndicator size="large" color={palette.text} />
+        <Text style={styles.loadingText}>Loading lesson...</Text>
       </View>
     );
+  }
+
+  if (!auth) {
+    return <Redirect href="/signup" />;
   }
 
   if (loading) {
@@ -89,16 +95,17 @@ export default function LessonDetail() {
   if (error || !lesson) {
     return (
       <View style={styles.center}>
+        <ScreenBackButton fallbackHref="/home" style={styles.centerBackButton} />
         <Text style={styles.errorText}>{error || 'Lesson not found'}</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Go Back</Text>
-        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <View style={styles.topBar}>
+        <ScreenBackButton fallbackHref="/home" />
+      </View>
       <View style={styles.header}>
         <Text style={styles.title}>{lesson.title}</Text>
         <Text style={styles.description}>{lesson.description}</Text>
@@ -126,6 +133,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.background,
     padding: 16,
+  },
+  topBar: {
+    marginBottom: 16,
   },
   center: {
     flex: 1,
@@ -187,16 +197,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  backButton: {
-    backgroundColor: palette.text,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  backText: {
-    color: palette.background,
-    fontSize: 16,
-    fontWeight: 'bold',
+  centerBackButton: {
+    marginBottom: 20,
   },
   list: {
     paddingBottom: 20,

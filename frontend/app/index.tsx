@@ -1,11 +1,19 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { palette } from '../constants/colors';
 
 export default function Index() {
-  const { auth } = useAuth();
+  const { auth, isHydrating } = useAuth();
+
+  if (isHydrating) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={palette.text} />
+      </View>
+    );
+  }
 
   if (auth) {
     return <Redirect href="/home" />;
@@ -37,6 +45,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: palette.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: palette.background,
   },
   title: {

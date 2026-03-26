@@ -16,7 +16,7 @@ import { palette } from '../constants/colors';
 
 export default function Home() {
   const router = useRouter();
-  const { auth, logout } = useAuth();
+  const { auth, isHydrating, logout } = useAuth();
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +60,14 @@ export default function Home() {
       ])
     ).start();
   }, [floatAnim]);
+
+  if (isHydrating) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={palette.text} />
+      </View>
+    );
+  }
 
   if (!auth) {
     return <Redirect href="/signup" />;
@@ -170,6 +178,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 40,
+    backgroundColor: palette.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: palette.background,
   },
   welcome: {

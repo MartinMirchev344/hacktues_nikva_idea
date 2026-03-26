@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useEffect, useState } from 'react';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { login, register } from '../lib/auth-api';
 import { palette } from '../constants/colors';
@@ -18,7 +18,7 @@ import { palette } from '../constants/colors';
 export default function Auth() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
-  const { setAuth } = useAuth();
+  const { auth, isHydrating, setAuth } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +34,18 @@ export default function Auth() {
       setIsLogin(true);
     }
   }, [params.mode]);
+
+  if (isHydrating) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={palette.text} />
+      </View>
+    );
+  }
+
+  if (auth) {
+    return <Redirect href="/home" />;
+  }
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -122,10 +134,6 @@ export default function Auth() {
             <Text style={styles.buttonText}>{isLogin ? 'Log In' : 'Sign Up'}</Text>
           )}
         </TouchableOpacity>
-
-        <Link href="/" style={styles.backLink}>
-          <Text style={styles.backLinkText}>Back to Home</Text>
-        </Link>
       </View>
     </KeyboardAvoidingView>
   );
@@ -136,10 +144,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.background,
     justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: palette.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   formContainer: {
     backgroundColor: palette.surface,
-    margin: 20,
     borderRadius: 20,
     padding: 30,
     shadowColor: '#000',
@@ -212,15 +226,5 @@ const styles = StyleSheet.create({
     color: palette.background,
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  backLink: {
-    alignSelf: 'center',
-    marginTop: 20,
-  },
-  backLinkText: {
-    color: palette.text,
-    fontSize: 16,
-    textDecorationLine: 'underline',
-    opacity: 0.75,
   },
 });
