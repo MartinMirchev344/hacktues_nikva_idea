@@ -17,6 +17,7 @@ XP_PER_LESSON = 20
 
 class LessonListView(generics.ListAPIView):
     serializer_class = LessonListSerializer
+    permission_classes = [permissions.AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'sign_language']
     ordering_fields = ['difficulty', 'title', 'created_at']
@@ -34,6 +35,7 @@ class LessonListView(generics.ListAPIView):
 
 class LessonDetailView(generics.RetrieveAPIView):
     serializer_class = LessonDetailSerializer
+    permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
 
     def get_queryset(self):
