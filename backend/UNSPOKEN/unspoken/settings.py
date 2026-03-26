@@ -1,7 +1,10 @@
 from pathlib import Path
 from datetime import timedelta
+from importlib.util import find_spec
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+HAS_CORSHEADERS = find_spec('corsheaders') is not None
+HAS_SIMPLEJWT = find_spec('rest_framework_simplejwt') is not None
 
 SECRET_KEY = 'django-insecure-paar1-(7g0-0g2qujp_0_1o!ksw#t_zrdjahs7#%mj%2kxup(h'
 
@@ -17,21 +20,25 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'corsheaders',
     'users',
     'lessons',
 ]
 
+if HAS_CORSHEADERS:
+    INSTALLED_APPS.append('corsheaders')
+
 AUTH_USER_MODEL = 'users.User'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
 }
+
+if HAS_SIMPLEJWT:
+    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
@@ -42,7 +49,6 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -51,7 +57,10 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'unspoken.urls'
+if HAS_CORSHEADERS:
+    MIDDLEWARE.insert(1, 'corsheaders.middleware.CorsMiddleware')
+
+ROOT_URLCONF = 'UNSPOKEN.urls'
 
 TEMPLATES = [
     {
@@ -68,7 +77,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'unspoken.wsgi.application'
+WSGI_APPLICATION = 'UNSPOKEN.wsgi.application'
 
 DATABASES = {
     'default': {
