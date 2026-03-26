@@ -125,3 +125,26 @@ class Attempt(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.exercise.title} ({self.status})"
+
+
+class UserLessonProgress(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lesson_progress",
+    )
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.CASCADE,
+        related_name="user_progress",
+    )
+    is_completed = models.BooleanField(default=False)
+    best_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    attempts_count = models.PositiveIntegerField(default=0)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("user", "lesson")
+
+    def __str__(self):
+        return f"{self.user} - {self.lesson.title} ({'done' if self.is_completed else 'in progress'})"

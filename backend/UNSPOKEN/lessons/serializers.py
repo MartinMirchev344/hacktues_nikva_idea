@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Attempt, Exercise, Lesson
+from .models import Attempt, Exercise, Lesson, UserLessonProgress
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
@@ -114,3 +114,14 @@ class AttemptCreateUpdateSerializer(serializers.ModelSerializer):
             "completed_at",
         ]
         read_only_fields = ["id"]
+
+
+class UserLessonProgressSerializer(serializers.ModelSerializer):
+    lesson_title = serializers.CharField(source='lesson.title', read_only=True)
+    lesson_slug = serializers.CharField(source='lesson.slug', read_only=True)
+
+    class Meta:
+        model = UserLessonProgress
+        fields = ['id', 'lesson', 'lesson_title', 'lesson_slug', 'is_completed',
+                  'best_score', 'attempts_count', 'completed_at']
+        read_only_fields = ['id', 'is_completed', 'best_score', 'attempts_count', 'completed_at']
