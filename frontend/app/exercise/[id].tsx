@@ -34,7 +34,7 @@ export default function Exercise() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView>(null);
+  const cameraRef = useRef<CameraView | null>(null);
 
   useEffect(() => {
     if (!auth || !id) return;
