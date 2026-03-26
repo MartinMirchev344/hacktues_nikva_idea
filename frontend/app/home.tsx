@@ -87,6 +87,7 @@ export default function Home() {
     { top: 130, right: 90, width: 70, height: 40, opacity: 0.6 },
     { top: 240, left: 10, width: 80, height: 46, opacity: 0.65 },
   ];
+
   const renderLesson = ({ item, index }: { item: Lesson; index: number }) => {
     const exerciseCount = item['exercise_count'] ?? item.exercises?.length ?? 0;
     const floatY = floatAnim.interpolate({
@@ -121,6 +122,7 @@ export default function Home() {
           <Text style={styles.lessonMetaCloud}>
             Difficulty: {item.difficulty} • {exerciseCount} exercises
           </Text>
+
         </TouchableOpacity>
       </Animated.View>
     );
@@ -365,7 +367,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.75,
   },
-  // legacy cloud-shape styles are removed; images are now used instead.
+
   cloudBase: {
     position: 'absolute',
     bottom: 8,
