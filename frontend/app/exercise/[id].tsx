@@ -16,8 +16,10 @@ import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/auth-context';
 import {
   getAttemptDetail,
+  createAttempt,
   submitAttempt,
   verifySign,
+  getMyAttempts,
   VerifyResult,
 } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
@@ -28,7 +30,12 @@ type QuizPhase = 'answering' | 'results';
 
 export default function Exercise() {
   const router = useRouter();
-  const { id, isLastExercise } = useLocalSearchParams<{ id: string; isLastExercise?: string }>();
+  const { id, isLastExercise, exerciseQueue, queueIndex } = useLocalSearchParams<{
+    id: string;
+    isLastExercise?: string;
+    exerciseQueue?: string;
+    queueIndex?: string;
+  }>();
   const { auth, isHydrating } = useAuth();
 
   const [attempt, setAttempt] = useState<any>(null);
@@ -120,12 +127,37 @@ export default function Exercise() {
         feedback_items: result.feedback_items,
         completed_at: new Date().toISOString(),
       });
-      if (isLastExercise === '1' && result.is_correct) await playSound('lesson_complete');
-      router.back();
+      await advanceOrExit(result.is_correct);
     } catch (err) {
       Alert.alert('Error', 'Failed to save results. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const advanceOrExit = async (isCorrect: boolean) => {
+    const queue: number[] = exerciseQueue ? JSON.parse(exerciseQueue) : [];
+    const idx = queueIndex ? parseInt(queueIndex) : -1;
+
+    if (queue.length > 0) {
+      // Check if all exercises in the lesson are now completed
+      const attempts = await getMyAttempts();
+      const completedIds = new Set(
+        attempts.filter(a => a.status === 'completed').map(a => a.exercise.id)
+      );
+      const allDone = queue.every(exId => completedIds.has(exId));
+      if (allDone) await playSound('lesson_complete');
+    }
+
+    if (queue.length > 0 && idx >= 0 && idx < queue.length - 1) {
+      const nextExerciseId = queue[idx + 1];
+      const nextAttempt = await createAttempt(nextExerciseId);
+      router.replace({
+        pathname: `/exercise/${nextAttempt.id}`,
+        params: { exerciseQueue, queueIndex: String(idx + 1) },
+      });
+    } else {
+      router.back();
     }
   };
 
@@ -151,8 +183,7 @@ export default function Exercise() {
         detected_sign: quizAnswer.trim(),
         completed_at: new Date().toISOString(),
       });
-      if (isLastExercise === '1' && quizCorrect) await playSound('lesson_complete');
-      router.back();
+      await advanceOrExit(quizCorrect);
     } catch {
       Alert.alert('Error', 'Failed to save results. Please try again.');
     } finally {

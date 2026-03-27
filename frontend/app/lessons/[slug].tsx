@@ -53,7 +53,6 @@ export default function LessonDetail() {
 
   const handleStartExercise = async (exercise: Exercise) => {
     if (!auth) return;
-
     try {
       const attempt = await createAttempt(exercise.id);
       const maxOrder = Math.max(...exercises.map(e => e.order));
@@ -61,6 +60,18 @@ export default function LessonDetail() {
       router.push({ pathname: `/exercise/${attempt.id}`, params: { isLastExercise: isLast ? '1' : '0' } });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start exercise');
+    }
+  };
+
+  const handleStartLesson = async () => {
+    if (!auth || exercises.length === 0) return;
+    const ordered = [...exercises].sort((a, b) => a.order - b.order);
+    try {
+      const attempt = await createAttempt(ordered[0].id);
+      const queue = JSON.stringify(ordered.map(e => e.id));
+      router.push({ pathname: `/exercise/${attempt.id}`, params: { exerciseQueue: queue, queueIndex: '0' } });
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start lesson');
     }
   };
 
@@ -138,6 +149,9 @@ export default function LessonDetail() {
           <Text style={styles.difficulty}>{lesson.difficulty}</Text>
           <Text style={styles.duration}>{lesson.estimated_duration_minutes} minutes</Text>
         </View>
+        <TouchableOpacity style={styles.startLessonButton} onPress={handleStartLesson}>
+          <Text style={styles.startLessonText}>Start Lesson</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={styles.exercisesTitle}>Exercises ({exercises.length})</Text>
@@ -204,6 +218,18 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 14,
     color: palette.text,
+  },
+  startLessonButton: {
+    backgroundColor: palette.text,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  startLessonText: {
+    color: palette.background,
+    fontSize: 17,
+    fontWeight: 'bold',
   },
   exercisesTitle: {
     fontSize: 20,
