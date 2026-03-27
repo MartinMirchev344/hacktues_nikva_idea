@@ -20,6 +20,7 @@ export default function Auth() {
   const params = useLocalSearchParams<{ mode?: string }>();
   const { auth, isHydrating, setAuth } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +49,7 @@ export default function Auth() {
   }
 
   const handleAuth = async () => {
-    if (!email || !password) {
+    if (!email || !password || (!isLogin && !username.trim())) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -61,7 +62,12 @@ export default function Auth() {
       setIsSubmitting(true);
       const authResponse = isLogin
         ? await login({ email, password })
-        : await register({ email, password, confirmPassword });
+        : await register({
+            username: username.trim(),
+            email,
+            password,
+            confirmPassword,
+          });
       setAuth(authResponse);
       Alert.alert('Success', `${isLogin ? 'Logged in' : 'Account created'} successfully!`);
       router.replace('/home');
@@ -95,6 +101,16 @@ export default function Auth() {
           </TouchableOpacity>
         </View>
 
+        {!isLogin && (
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            placeholderTextColor={palette.text}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+        )}
         <TextInput
           style={styles.input}
           placeholder="Email"

@@ -78,6 +78,7 @@ export function clearAuthToken() {
 }
 
 type AuthPayload = {
+  username?: string;
   email: string;
   password: string;
   confirmPassword?: string;
@@ -95,6 +96,7 @@ async function request<T>(path: string, body: Record<string, string>) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message =
+      data?.username?.[0] ??
       data?.email?.[0] ??
       data?.password?.[0] ??
       data?.detail ??
@@ -126,6 +128,7 @@ export function login(payload: AuthPayload) {
 
 export function register(payload: AuthPayload) {
   return request<AuthResponse>('/register/', {
+    username: payload.username ?? '',
     email: payload.email,
     password: payload.password,
     password2: payload.confirmPassword ?? '',
