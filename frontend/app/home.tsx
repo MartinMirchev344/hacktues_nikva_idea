@@ -173,33 +173,42 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.skyTopGradient} />
-      <View style={styles.skyBottomGradient} />
-      {skyClouds.map((c, i) => (
-        <View key={`decor-${i}`} style={[styles.skyCloud, c]} />
-      ))}
+      <View style={styles.backgroundGlowTop} />
+      <View style={styles.backgroundGlowBottom} />
 
-      <SafeAreaView edges={['top']}>
-        <View style={styles.headerRow}>
-          <View style={styles.xpBubble}>
-            <Text style={styles.xpNumber}>{auth.user.xp}</Text>
-            <Text style={styles.xpLabel}>XP</Text>
+      <View style={styles.heroPanel}>
+        <View style={[styles.heroBlurOrb, styles.heroBlurOrbLarge]} />
+        <View style={[styles.heroBlurOrb, styles.heroBlurOrbMedium]} />
+        <View style={[styles.heroBlurOrb, styles.heroBlurOrbSmall]} />
+        {skyClouds.map((c, i) => (
+          <View key={`decor-${i}`} style={[styles.skyCloud, c]} />
+        ))}
+
+        <SafeAreaView edges={['top']} style={styles.heroSafeArea}>
+          <View style={styles.headerRow}>
+            <View style={styles.xpBubble}>
+              <Text style={styles.xpNumber}>{auth.user.xp}</Text>
+              <Text style={styles.xpLabel}>XP</Text>
+            </View>
+            <View style={styles.streakBubble}>
+              <FlameIcon streak={auth.user.streak} />
+              <Text style={[styles.streakNumber, { color: streakColor(auth.user.streak) }]}>
+                {auth.user.streak}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Text style={styles.logoutText}>Log Out</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.streakBubble}>
-            <FlameIcon streak={auth.user.streak} />
-            <Text style={[styles.streakNumber, { color: streakColor(auth.user.streak) }]}>
-              {auth.user.streak}
-            </Text>
+        </SafeAreaView>
+
+        <View style={styles.welcomeSection}>
+          <View style={styles.welcomeBadge}>
+            <Text style={styles.welcomeBadgeText}>Ready to practice</Text>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Log Out</Text>
-          </TouchableOpacity>
+          <Text style={styles.welcome}>Welcome, {auth.user.username}</Text>
+          <Text style={styles.subtitle}>Choose a lesson to start practicing</Text>
         </View>
-      </SafeAreaView>
-
-      <View style={styles.welcomeSection}>
-        <Text style={styles.welcome}>Welcome, {auth.user.username}</Text>
-        <Text style={styles.subtitle}>Choose a lesson to start practicing</Text>
       </View>
 
       {loading ? (
@@ -225,8 +234,8 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     backgroundColor: palette.background,
   },
   loadingContainer: {
@@ -236,28 +245,30 @@ const styles = StyleSheet.create({
     backgroundColor: palette.background,
   },
   welcome: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
     color: palette.text,
-    marginBottom: 4,
+    marginBottom: 6,
     textAlign: 'center',
+    lineHeight: 36,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 17,
     color: palette.text,
-    marginBottom: 12,
     textAlign: 'center',
-    opacity: 0.75,
+    opacity: 0.72,
+    maxWidth: 290,
+    lineHeight: 24,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 16,
+    marginBottom: 16,
+    paddingHorizontal: 18,
   },
   xpBubble: {
-    backgroundColor: palette.surface,
+    backgroundColor: 'rgba(255,255,255,0.6)',
     borderRadius: 28,
     paddingVertical: 10,
     paddingHorizontal: 18,
@@ -265,10 +276,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
     minWidth: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.38)',
   },
   xpNumber: {
     fontSize: 24,
@@ -283,16 +296,16 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     backgroundColor: palette.text,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 4,
   },
   logoutText: {
     color: palette.background,
@@ -301,7 +314,25 @@ const styles = StyleSheet.create({
   },
   welcomeSection: {
     alignItems: 'center',
-    marginBottom: 40,
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+  },
+  welcomeBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.42)',
+  },
+  welcomeBadgeText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    opacity: 0.72,
+    textTransform: 'uppercase',
   },
   meta: {
     fontSize: 14,
@@ -309,7 +340,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   streakBubble: {
-    backgroundColor: palette.surface,
+    backgroundColor: 'rgba(255,255,255,0.6)',
     borderRadius: 28,
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -319,10 +350,12 @@ const styles = StyleSheet.create({
     gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
     minWidth: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.38)',
   },
   streakNumber: {
     fontSize: 26,
@@ -335,7 +368,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   list: {
-    paddingBottom: 20,
+    paddingTop: 8,
+    paddingBottom: 28,
   },
   lessonTitle: {
     fontSize: 18,
@@ -354,48 +388,91 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   lessonWrapper: {
-    marginBottom: 18,
+    marginBottom: 16,
     alignItems: 'center',
   },
-  skyTopGradient: {
+  backgroundGlowTop: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 200,
-    backgroundColor: palette.surface,
-    opacity: 0.95,
-  },
-  skyBottomGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: -40,
+    left: -40,
+    width: 220,
     height: 220,
+    borderRadius: 999,
+    backgroundColor: '#DCE8F1',
+    opacity: 0.8,
+  },
+  backgroundGlowBottom: {
+    position: 'absolute',
+    right: -50,
+    bottom: 80,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
     backgroundColor: palette.accent,
-    opacity: 0.92,
+    opacity: 0.18,
+  },
+  heroPanel: {
+    backgroundColor: '#D4E0E8',
+    borderRadius: 34,
+    marginBottom: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+    shadowColor: '#5B6C82',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.12,
+    shadowRadius: 28,
+    elevation: 8,
+  },
+  heroSafeArea: {
+    paddingTop: 4,
+  },
+  heroBlurOrb: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.42)',
+    borderRadius: 999,
+  },
+  heroBlurOrbLarge: {
+    width: 220,
+    height: 220,
+    top: -36,
+    right: -70,
+  },
+  heroBlurOrbMedium: {
+    width: 130,
+    height: 130,
+    bottom: 26,
+    left: -18,
+    opacity: 0.5,
+  },
+  heroBlurOrbSmall: {
+    width: 96,
+    height: 96,
+    top: 116,
+    right: 48,
+    opacity: 0.45,
   },
   skyCloud: {
     position: 'absolute',
     backgroundColor: palette.background,
     borderRadius: 200,
-    opacity: 0.55,
+    opacity: 0.3,
   },
   lessonCloud: {
-    width: '88%',
+    width: '92%',
     minHeight: 120,
-    backgroundColor: palette.background,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-    borderWidth: 2,
-    borderColor: palette.surface,
+    shadowColor: '#5B6C82',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(209,217,223,0.9)',
   },
   cloudImage: {
     position: 'absolute',
@@ -408,16 +485,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: palette.text,
     zIndex: 2,
-    marginTop: 12,
     textAlign: 'center',
   },
   lessonMetaCloud: {
-    fontSize: 12,
+    fontSize: 13,
     color: palette.text,
     zIndex: 2,
     marginTop: 8,
     textAlign: 'center',
-    opacity: 0.75,
+    opacity: 0.7,
   },
 
   cloudBase: {
