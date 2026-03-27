@@ -1,5 +1,70 @@
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://10.0.2.2:8000/api/auth';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+function normalizeBaseUrl(url: string) {
+  return url.replace(/\/$/, '');
+}
+
+function isLoopbackUrl(url: string) {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/|$)/.test(url);
+}
+
+function resolveExpoHost() {
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    Constants.manifest2?.extra?.expoClient?.hostUri;
+
+  return hostUri?.split(':')[0] ?? null;
+}
+
+function getDefaultApiBaseUrl() {
+  const expoHost = resolveExpoHost();
+  if (expoHost) {
+    return `http://${expoHost}:8000/api/auth`;
+  }
+
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8000/api/auth';
+  }
+
+  return 'http://127.0.0.1:8000/api/auth';
+}
+
+function resolveApiBaseUrl() {
+  const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  const expoHost = resolveExpoHost();
+
+  if (configuredBaseUrl) {
+    const normalizedBaseUrl = normalizeBaseUrl(configuredBaseUrl);
+    if (expoHost && Platform.OS !== 'web' && isLoopbackUrl(normalizedBaseUrl)) {
+      return normalizedBaseUrl.replace(
+        /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/,
+        `//${expoHost}$2`
+      );
+    }
+    return normalizedBaseUrl;
+  }
+
+  return getDefaultApiBaseUrl();
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+const API_ROOT_URL = API_BASE_URL.replace(/\/auth\/?$/, '');
+
+function getNetworkErrorMessage() {
+  return `Unable to reach the API at ${API_BASE_URL}. On a physical phone, make sure the backend is running on your laptop with: python manage.py runserver 0.0.0.0:8000`;
+}
+
+async function fetchWithNetworkHint(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(getNetworkErrorMessage());
+    }
+    throw error;
+  }
+}
 
 // Token storage
 let storedToken: string | null = null;
@@ -19,7 +84,7 @@ type AuthPayload = {
 };
 
 async function request<T>(path: string, body: Record<string, string>) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetchWithNetworkHint(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -121,7 +186,7 @@ export type Attempt = {
 
 // Lesson API
 export async function getLessons(): Promise<Lesson[]> {
-  const response = await fetch(`${API_BASE_URL.replace('/auth', '')}/lessons/`);
+  const response = await fetchWithNetworkHint(`${API_ROOT_URL}/lessons/`);
   if (!response.ok) {
     throw new Error('Failed to fetch lessons');
   }
@@ -129,8 +194,8 @@ export async function getLessons(): Promise<Lesson[]> {
 }
 
 export async function getLesson(slug: string): Promise<Lesson> {
-  const response = await fetch(
-    `${API_BASE_URL.replace('/auth', '')}/lessons/${slug}/`
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/lessons/${slug}/`
   );
   if (!response.ok) {
     throw new Error('Failed to fetch lesson');
@@ -141,8 +206,8 @@ export async function getLesson(slug: string): Promise<Lesson> {
 // Attempt API
 export async function createAttempt(exerciseId: number): Promise<Attempt> {
   const token = await getToken();
-  const response = await fetch(
-    `${API_BASE_URL.replace('/auth', '')}/attempts/`,
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/attempts/`,
     {
       method: 'POST',
       headers: {
@@ -161,8 +226,8 @@ export async function createAttempt(exerciseId: number): Promise<Attempt> {
 
 export async function getAttemptDetail(attemptId: number): Promise<Attempt> {
   const token = await getToken();
-  const response = await fetch(
-    `${API_BASE_URL.replace('/auth', '')}/attempts/${attemptId}/detail/`,
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/attempts/${attemptId}/detail/`,
     {
       headers: {
         'Authorization': `Token ${token}`,
@@ -192,8 +257,8 @@ export async function submitAttempt(
   }
 ): Promise<Attempt> {
   const token = await getToken();
-  const response = await fetch(
-    `${API_BASE_URL.replace('/auth', '')}/attempts/${attemptId}/`,
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/attempts/${attemptId}/`,
     {
       method: 'PATCH',
       headers: {
@@ -236,8 +301,8 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
     type: 'video/mp4',
   } as any);
 
-  const response = await fetch(
-    `${API_BASE_URL.replace('/auth', '')}/attempts/${attemptId}/verify/`,
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/attempts/${attemptId}/verify/`,
     {
       method: 'POST',
       headers: {
@@ -255,7 +320,7 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
 
 export async function getMyAttempts(): Promise<Attempt[]> {
   const token = await getToken();
-  const response = await fetch(`${API_BASE_URL.replace('/auth', '')}/me/attempts/`, {
+  const response = await fetchWithNetworkHint(`${API_ROOT_URL}/me/attempts/`, {
     headers: { 'Authorization': `Token ${token}` },
   });
   if (!response.ok) throw new Error('Failed to fetch attempts');
