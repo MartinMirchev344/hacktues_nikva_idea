@@ -1,9 +1,14 @@
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import User
+
+from .models import OTPCode, User
 from .serializers import LoginSerializer, RegisterSerializer, UserProfileSerializer
 
 
@@ -34,14 +39,101 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+
+        otp = OTPCode.generate_for(user.email, OTPCode.Purpose.LOGIN)
+        send_mail(
+            subject='Your Mimical login code',
+            message=f'Your verification code is: {otp.code}\n\nThis code expires in 10 minutes.',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+
+        return Response({'needs_otp': True, 'email': user.email})
+
+
+class VerifyOTPView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        code = request.data.get('code', '').strip()
+        purpose = request.data.get('purpose', OTPCode.Purpose.LOGIN)
+
+        otp = OTPCode.objects.filter(
+            email=email, code=code, purpose=purpose, is_used=False
+        ).order_by('-created_at').first()
+
+        if not otp or not otp.is_valid():
+            return Response({'detail': 'Invalid or expired code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp.is_used = True
+        otp.save()
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         token, _ = Token.objects.get_or_create(user=user)
         profile_data = UserProfileSerializer(user).data
-        return Response(
-            {
-                'token': token.key,
-                'user': profile_data,
-            }
-        )
+        return Response({'token': token.key, 'user': profile_data})
+
+
+class ForgotPasswordView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        user = User.objects.filter(email__iexact=email).first()
+
+        # Always return the same message to avoid revealing whether email exists
+        if user:
+            otp = OTPCode.generate_for(email, OTPCode.Purpose.PASSWORD_RESET)
+            send_mail(
+                subject='Reset your Mimical password',
+                message=f'Your password reset code is: {otp.code}\n\nThis code expires in 10 minutes.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+
+        return Response({'detail': 'If this email is registered, a reset code has been sent.'})
+
+
+class ResetPasswordView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        code = request.data.get('code', '').strip()
+        new_password = request.data.get('new_password', '')
+
+        otp = OTPCode.objects.filter(
+            email=email, code=code, purpose=OTPCode.Purpose.PASSWORD_RESET, is_used=False
+        ).order_by('-created_at').first()
+
+        if not otp or not otp.is_valid():
+            return Response({'detail': 'Invalid or expired code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            validate_password(new_password, user)
+        except ValidationError as e:
+            return Response({'detail': e.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+
+        otp.is_used = True
+        otp.save()
+
+        Token.objects.filter(user=user).delete()
+        token, _ = Token.objects.get_or_create(user=user)
+        profile_data = UserProfileSerializer(user).data
+        return Response({'token': token.key, 'user': profile_data})
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
@@ -76,7 +168,7 @@ class StreakStatusView(APIView):
             at_risk = False
         else:
             days_since = (today - user.last_activity_date).days
-            at_risk = days_since == 1 and after_8pm  # practiced yesterday, not yet today, past 8pm
+            at_risk = days_since == 1 and after_8pm
 
         return Response({
             'streak': user.streak,

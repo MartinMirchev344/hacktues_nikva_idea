@@ -136,8 +136,10 @@ export type AuthResponse = {
   };
 };
 
-export function login(payload: AuthPayload) {
-  return request<AuthResponse>('/login/', {
+export type LoginResponse = { needs_otp: true; email: string } | AuthResponse;
+
+export function login(payload: AuthPayload): Promise<LoginResponse> {
+  return request<LoginResponse>('/login/', {
     email: payload.email,
     password: payload.password,
   });
@@ -150,6 +152,18 @@ export function register(payload: AuthPayload) {
     password: payload.password,
     password2: payload.confirmPassword ?? '',
   });
+}
+
+export function verifyLoginOtp(email: string, code: string): Promise<AuthResponse> {
+  return request<AuthResponse>('/verify-otp/', { email, code, purpose: 'login' });
+}
+
+export function forgotPassword(email: string): Promise<{ detail: string }> {
+  return request<{ detail: string }>('/forgot-password/', { email });
+}
+
+export function resetPassword(email: string, code: string, newPassword: string): Promise<AuthResponse> {
+  return request<AuthResponse>('/reset-password/', { email, code, new_password: newPassword });
 }
 
 // Lesson and Exercise Types
