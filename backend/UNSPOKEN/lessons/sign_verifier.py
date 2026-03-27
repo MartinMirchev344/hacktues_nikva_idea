@@ -4,11 +4,12 @@ import tempfile
 from recognition.services import get_recognition_service, normalize_label
 
 
-def verify_sign(video_file, expected_sign: str) -> dict:
+def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) -> dict:
     frames = extract_video_frames(video_file)
+    lesson_ids = [lesson_id] if lesson_id is not None else list(range(1, 20))
     prediction = get_recognition_service().predict_frames(
         frames=frames,
-        lesson_ids=[1, 2, 5],
+        lesson_ids=lesson_ids,
         top_k=3,
         include_tracking=True,
     )
@@ -17,23 +18,35 @@ def verify_sign(video_file, expected_sign: str) -> dict:
     normalized_expected = normalize_label(expected_sign)
     is_correct = detected_sign == normalized_expected
 
+    no_landmarks = prediction.tracking_data.get("frames_with_landmarks", 1) == 0
     confidence = round(prediction.confidence * 100, 2)
     accuracy_score = confidence if is_correct else round(max(confidence * 0.6, 5.0), 2)
     handshape_score = round(max(confidence * 0.92, 5.0), 2)
     speed_score = 100.0
 
-    if is_correct:
-        coach_summary = f"Nice work. The model detected '{detected_sign}' with strong confidence."
+    if no_landmarks:
+        coach_summary = (
+            "Your hands and body were not detected in the video. "
+            "Make sure your hands and upper body are clearly visible, well-lit, and centered in the frame."
+        )
+        feedback_items = ["No landmarks detected — try again with better lighting and positioning."]
+    elif is_correct:
+        coach_summary = f"Nice work! The model recognized '{detected_sign}' with {confidence:.0f}% confidence."
         feedback_items = []
     else:
         coach_summary = (
             f"The model thinks you signed '{detected_sign}' instead of '{normalized_expected}'. "
-            "Try centering your hands and repeating the sign more clearly."
+            "Try centering your hands, signing more slowly, and ensuring good lighting."
         )
         feedback_items = [
-            f"Expected sign: {normalized_expected}",
-            f"Detected sign: {detected_sign}",
+            f"Expected: {normalized_expected}",
+            f"Detected: {detected_sign}",
         ]
+        if prediction.candidates:
+            top_candidates = ", ".join(
+                f"{c.sign} ({round(c.score * 100, 0):.0f}%)" for c in prediction.candidates[:3]
+            )
+            feedback_items.append(f"Top predictions: {top_candidates}")
 
     return {
         "is_correct": is_correct,

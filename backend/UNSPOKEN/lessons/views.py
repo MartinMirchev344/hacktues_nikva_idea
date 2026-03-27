@@ -187,5 +187,8 @@ class VerifySignView(APIView):
         if not video:
             return Response({"detail": "No video provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        result = verify_sign(video, attempt.exercise.expected_sign)
+        try:
+            result = verify_sign(video, attempt.exercise.expected_sign, lesson_id=attempt.exercise.lesson_id)
+        except Exception as exc:
+            return Response({"detail": f"Recognition failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(result, status=status.HTTP_200_OK)

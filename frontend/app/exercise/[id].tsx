@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Animated,
   View,
   Text,
   TextInput,
@@ -11,8 +10,8 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
-  Easing,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
@@ -28,14 +27,10 @@ import {
 } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
 import { ScreenBackButton } from '../../components/screen-back-button';
+import { getVidref } from '../../lib/signasl-map';
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 type QuizPhase = 'answering' | 'results';
-type QuizPreviewData = {
-  cue?: string;
-  motion?: string;
-  steps?: string[];
-};
 
 function normalizeSignText(value: string | null | undefined) {
   return (value ?? '')
@@ -62,7 +57,7 @@ export default function Exercise() {
     exerciseQueue?: string;
     queueIndex?: string;
   }>();
-  const { auth, isHydrating } = useAuth();
+  const { auth, isHydrating, updateUserStats } = useAuth();
 
   const [attempt, setAttempt] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -192,7 +187,7 @@ export default function Exercise() {
     if (!result) return;
     setIsSubmitting(true);
     try {
-      await submitAttempt(attempt.id, {
+      const saved = await submitAttempt(attempt.id, {
         status: 'completed',
         accuracy_score: result.accuracy_score,
         speed_score: result.speed_score,
@@ -202,6 +197,9 @@ export default function Exercise() {
         feedback_items: result.feedback_items,
         completed_at: new Date().toISOString(),
       });
+      if (saved.total_xp != null && saved.streak != null) {
+        updateUserStats(saved.total_xp, saved.streak);
+      }
       await advanceOrExit(result.is_correct);
     } catch (err) {
       Alert.alert('Error', 'Failed to save results. Please try again.');
@@ -252,12 +250,15 @@ export default function Exercise() {
   const handleQuizSave = async () => {
     setIsSubmitting(true);
     try {
-      await submitAttempt(attempt.id, {
+      const saved = await submitAttempt(attempt.id, {
         status: 'completed',
         accuracy_score: quizCorrect ? 100 : 0,
         detected_sign: quizAnswer.trim(),
         completed_at: new Date().toISOString(),
       });
+      if (saved.total_xp != null && saved.streak != null) {
+        updateUserStats(saved.total_xp, saved.streak);
+      }
       await advanceOrExit(quizCorrect);
     } catch {
       Alert.alert('Error', 'Failed to save results. Please try again.');
@@ -337,7 +338,7 @@ export default function Exercise() {
           <ScreenBackButton fallbackHref="/home" />
           <ExerciseCard attempt={attempt} />
 
-          <GestureDemoCard attempt={attempt} />
+          <SignAslVideo expectedSign={attempt.exercise?.expected_sign ?? ''} />
 
           {quizPhase === 'answering' && (
             <>
@@ -532,123 +533,55 @@ function ExerciseCard({ attempt }: { attempt: any }) {
   );
 }
 
-function GestureDemoCard({ attempt }: { attempt: any }) {
-  const preview = (attempt.exercise?.target_motion_data ?? {}) as QuizPreviewData;
-  const progress = useRef(new Animated.Value(0)).current;
-  const [stepIndex, setStepIndex] = useState(0);
-  const steps = preview.steps?.length
-    ? preview.steps
-    : ['Get ready', 'Watch the hand movement', 'Think of the signed word'];
-  const cue = preview.cue ?? 'A short sign demo is looping below.';
-  const motion = preview.motion ?? 'outward_wave';
+function SignAslVideo({ expectedSign }: { expectedSign: string }) {
+  const vidref = getVidref(expectedSign);
 
-  useEffect(() => {
-    progress.setValue(0);
-    const animation = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 2600,
-        easing: Easing.inOut(Easing.sin),
-        useNativeDriver: false,
-      })
+  if (!vidref) {
+    return (
+      <View style={styles.videoPreviewCard}>
+        <Text style={styles.videoPreviewEyebrow}>Sign Demo</Text>
+        <Text style={styles.videoPreviewCue}>No video available for this sign yet.</Text>
+      </View>
     );
-    animation.start();
+  }
 
-    const intervalId = setInterval(() => {
-      setStepIndex((current) => (current + 1) % steps.length);
-    }, 2600);
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #1F2924; width: 100%; height: 100%; overflow: hidden; }
+    body { display: flex; justify-content: center; align-items: flex-start; }
+    .signasldata-embed { width: 100%; border: none; }
+  </style>
+</head>
+<body>
+  <blockquote class="signasldata-embed" data-vidref="${vidref}"></blockquote>
+  <script async src="https://embed.signasl.org/widgets.js" charset="utf-8"></script>
+</body>
+</html>`;
 
-    return () => {
-      animation.stop();
-      clearInterval(intervalId);
-    };
-  }, [motion, progress, steps.length]);
-
-  const translateX =
-    motion === 'circle'
-      ? progress.interpolate({
-          inputRange: [0, 0.25, 0.5, 0.75, 1],
-          outputRange: [0, 22, 0, -22, 0],
-        })
-      : motion === 'forward_release'
-        ? progress.interpolate({
-            inputRange: [0, 0.35, 0.7, 1],
-            outputRange: [0, 18, 44, 72],
-          })
-        : motion === 'finger_wave'
-          ? progress.interpolate({
-              inputRange: [0, 0.25, 0.5, 0.75, 1],
-              outputRange: [0, 12, -10, 12, 0],
-            })
-          : progress.interpolate({
-              inputRange: [0, 0.35, 0.7, 1],
-              outputRange: [0, 20, 50, 80],
-            });
-
-  const translateY =
-    motion === 'circle'
-      ? progress.interpolate({
-          inputRange: [0, 0.25, 0.5, 0.75, 1],
-          outputRange: [0, -12, -22, -12, 0],
-        })
-      : motion === 'fist_circle'
-        ? progress.interpolate({
-            inputRange: [0, 0.25, 0.5, 0.75, 1],
-            outputRange: [0, -10, -18, -10, 0],
-          })
-        : motion === 'forward_release'
-          ? progress.interpolate({
-              inputRange: [0, 0.35, 0.7, 1],
-              outputRange: [10, 2, -6, -12],
-            })
-          : progress.interpolate({
-              inputRange: [0, 0.35, 0.7, 1],
-              outputRange: [18, 8, 0, -6],
-            });
-
-  const rotate =
-    motion === 'finger_wave'
-      ? progress.interpolate({
-          inputRange: [0, 0.25, 0.5, 0.75, 1],
-          outputRange: ['-12deg', '10deg', '-12deg', '10deg', '-12deg'],
-        })
-      : progress.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: ['-8deg', '6deg', '-8deg'],
-        });
-
-  const progressWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
+  if (Platform.OS === 'web') {
+    return (
+      <View style={{ width: 420, alignSelf: 'center', height: 270, overflow: 'hidden', borderRadius: 20 }}>
+        {/* @ts-ignore */}
+        <iframe srcDoc={html} style={{ width: 420, height: 520, border: 'none', display: 'block', marginTop: -110 }} />
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.videoPreviewCard}>
-      <View style={styles.videoPreviewHeader}>
-        <Text style={styles.videoPreviewEyebrow}>Sign Demo</Text>
-        <Text style={styles.videoPreviewLoop}>Looping Preview</Text>
-      </View>
-      <Text style={styles.videoPreviewCue}>{cue}</Text>
-
-      <View style={styles.videoStage}>
-        <View style={styles.videoGuideHorizontal} />
-        <View style={styles.videoGuideVertical} />
-        <Animated.View
-          style={[
-            styles.demoHand,
-            {
-              transform: [{ translateX }, { translateY }, { rotate }],
-            },
-          ]}
-        >
-          <View style={styles.demoHandCore} />
-        </Animated.View>
-      </View>
-
-      <View style={styles.videoProgressTrack}>
-        <Animated.View style={[styles.videoProgressFill, { width: progressWidth }]} />
-      </View>
-      <Text style={styles.videoStepText}>{steps[stepIndex]}</Text>
+    <View style={styles.signAslClip}>
+      <WebView
+        source={{ html }}
+        style={styles.signAslWebView}
+        scrollEnabled={false}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        javaScriptEnabled
+        originWhitelist={['*']}
+      />
     </View>
   );
 }
@@ -883,6 +816,18 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 18,
     gap: 12,
+  },
+  signAslClip: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    height: 268,
+    backgroundColor: '#000',
+  },
+  signAslWebView: {
+    width: '100%',
+    height: 520,
+    marginTop: -110,
+    backgroundColor: '#000',
   },
   videoPreviewHeader: {
     flexDirection: 'row',

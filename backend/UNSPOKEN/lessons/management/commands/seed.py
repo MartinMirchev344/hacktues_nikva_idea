@@ -250,13 +250,13 @@ SEED_DATA = [
             {
                 "title": "Brother",
                 "prompt": "Sign 'Brother'",
-                "instructions": "Point your index fingers together at chin level, then bring both hands down pointing forward.",
+                "instructions": "Dominant hand forms an L-shape and touches the side of your forehead, then both hands come together with index fingers pointing forward.",
                 "expected_sign": "brother",
             },
             {
                 "title": "Sister",
                 "prompt": "Sign 'Sister'",
-                "instructions": "Point your index fingers together at jaw level, then bring both hands down pointing forward.",
+                "instructions": "Dominant hand forms an L-shape and touches the side of your chin, then both hands come together with index fingers pointing forward.",
                 "expected_sign": "sister",
             },
             {
@@ -336,7 +336,7 @@ SEED_DATA = [
             {
                 "title": "Angry",
                 "prompt": "Sign 'Angry'",
-                "instructions": "Place your bent fingers on your chin and move your hand forward while bending into a claw.",
+                "instructions": "Hold both hands in front of your chest with fingers curved like claws, then pull them upward and outward forcefully.",
                 "expected_sign": "angry",
             },
             {

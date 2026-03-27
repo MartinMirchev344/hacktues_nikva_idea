@@ -275,7 +275,7 @@ export async function submitAttempt(
     status?: string;
     completed_at?: string;
   }
-): Promise<Attempt> {
+): Promise<Attempt & { total_xp?: number; streak?: number }> {
   const token = await getToken();
   const response = await fetchWithNetworkHint(
     `${API_ROOT_URL}/attempts/${attemptId}/`,

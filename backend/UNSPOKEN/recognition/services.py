@@ -17,19 +17,63 @@ from .tgcn_config import TGCNConfig
 
 DEFAULT_SUPPORTED_LESSONS = (1, 2, 5)
 SUPPORTED_SIGN_ALIASES = {
+    # Greetings
     "hello": ["hello"],
     "goodbye": ["goodbye", "good bye"],
     "thank_you": ["thank_you", "thank you", "thanks"],
     "please": ["please"],
     "sorry": ["sorry"],
+    # Yes & No
     "yes": ["yes"],
     "no": ["no"],
     "maybe": ["maybe"],
+    # Family
     "mother": ["mother"],
     "father": ["father"],
     "brother": ["brother"],
     "sister": ["sister"],
     "friend": ["friend"],
+    # Numbers 1-10
+    "one": ["one"],
+    "two": ["two"],
+    "three": ["three"],
+    "four": ["four"],
+    "five": ["five"],
+    "six": ["six"],
+    "seven": ["seven"],
+    "eight": ["eight"],
+    "nine": ["nine"],
+    "ten": ["ten"],
+    # Colors
+    "red": ["red"],
+    "blue": ["blue"],
+    "green": ["green"],
+    "yellow": ["yellow"],
+    "white": ["white"],
+    "black": ["black"],
+    # Feelings
+    "happy": ["happy"],
+    "sad": ["sad"],
+    "angry": ["angry"],
+    "tired": ["tired"],
+    "love": ["love"],
+    # Common Questions
+    "what": ["what"],
+    "where": ["where"],
+    "who": ["who"],
+    "when": ["when"],
+    "how": ["how"],
+    # Food & Drink
+    "eat": ["eat"],
+    "drink": ["drink"],
+    "water": ["water"],
+    "more": ["more"],
+    "finished": ["finished", "finish", "done", "complete"],
+    # Asking for Help
+    "help": ["help"],
+    "stop": ["stop"],
+    "wait": ["wait"],
+    "understand": ["understand"],
 }
 POSE_INDICES = (0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 KEYPOINT_COUNT = 55
@@ -471,6 +515,12 @@ class RecognitionService:
         allowed_signs = self._load_allowed_signs(lesson_ids)
         sequence, tracking_data = self._get_extractor().extract_sequence(frames, self.backend.num_samples)
         candidates, warnings = self.backend.predict(sequence, allowed_signs=allowed_signs, top_k=top_k)
+
+        if tracking_data.get("frames_with_landmarks", 0) == 0:
+            warnings.append(
+                "No body or hand landmarks were detected in the video. "
+                "Ensure your hands and upper body are clearly visible and well-lit."
+            )
 
         if not candidates:
             raise RecognitionConfigurationError("No predictions were produced by the configured model.")

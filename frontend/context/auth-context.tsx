@@ -17,6 +17,7 @@ type AuthContextValue = {
   auth: AuthState;
   isHydrating: boolean;
   setAuth: (value: AuthState) => void;
+  updateUserStats: (xp: number, streak: number) => void;
   logout: () => void;
 };
 
@@ -116,12 +117,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     })();
   };
 
+  const updateUserStats = (xp: number, streak: number) => {
+    if (!auth) return;
+    const updated = { ...auth, user: { ...auth.user, xp, streak } };
+    setAuth(updated);
+    void writeStoredAuth(updated);
+  };
+
   return (
     <AuthContext.Provider
       value={{
         auth,
         isHydrating,
         setAuth: handleSetAuth,
+        updateUserStats,
         logout: () => {
           handleSetAuth(null);
         },
