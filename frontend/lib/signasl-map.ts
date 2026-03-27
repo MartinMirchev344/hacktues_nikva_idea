@@ -1,4 +1,10 @@
 export const SIGNASL_VIDREFS: Record<string, string> = {
+  // Alphabet
+  a: 'l93ttye86c',
+  f: 'gpogljtucn',
+  k: 'vbnj34s7g4',
+  r: 'bgjlnba0uz',
+  w: 'uzumydfhfg',
   // Greetings
   hello: 'ns3nvo9mpj',
   goodbye: '1jqvdn4kow',

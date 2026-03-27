@@ -74,6 +74,12 @@ SUPPORTED_SIGN_ALIASES = {
     "stop": ["stop"],
     "wait": ["wait"],
     "understand": ["understand"],
+    # Alphabet letters (gesture_practice)
+    "b": ["b"],
+    "d": ["d"],
+    "j": ["j"],
+    "m": ["m"],
+    "t": ["t"],
 }
 POSE_INDICES = (0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 KEYPOINT_COUNT = 55

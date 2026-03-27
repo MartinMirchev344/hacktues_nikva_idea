@@ -203,9 +203,9 @@ export default function Home() {
         </SafeAreaView>
 
         <View style={styles.welcomeSection}>
-          <View style={styles.welcomeBadge}>
-            <Text style={styles.welcomeBadgeText}>Ready to practice</Text>
-          </View>
+          <TouchableOpacity style={styles.welcomeBadge} onPress={() => router.push('/alphabet')}>
+            <Text style={styles.welcomeBadgeText}>ASL Alphabet</Text>
+          </TouchableOpacity>
           <Text style={styles.welcome}>Welcome, {auth.user.username}</Text>
           <Text style={styles.subtitle}>Choose a lesson to start practicing</Text>
         </View>

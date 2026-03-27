@@ -192,29 +192,49 @@ ALPHABET_SIGNS = [
 ]
 
 
+ALPHABET_QUIZ_LETTERS = ["A", "F", "K", "R", "W"]
+ALPHABET_PRACTICE_LETTERS = ["B", "D", "J", "M", "T"]
+
+_ALPHA_SIGN_MAP = dict(ALPHABET_SIGNS)
+
+
 def build_alphabet_lesson():
-    vocabulary = []
+    exercises = []
+    order = 1
 
-    for letter, instructions in ALPHABET_SIGNS:
-        vocabulary.append(
-            {
-                "title": f"Letter {letter}",
-                "prompt": f"Sign the letter {letter}",
-                "instructions": instructions,
-                "expected_sign": letter.lower(),
-            }
-        )
+    for practice_letter, quiz_letter in zip(ALPHABET_PRACTICE_LETTERS, ALPHABET_QUIZ_LETTERS):
+        practice_instructions = _ALPHA_SIGN_MAP[practice_letter]
+        quiz_instructions = _ALPHA_SIGN_MAP[quiz_letter]
 
-    return build_lesson(
-        "Alphabet",
-        "Practice the full ASL fingerspelling alphabet from A to Z.",
-        "beginner",
-        len(ALPHABET_SIGNS),
-        vocabulary,
-        "Watch the sign and guess the letter",
-        "Watch the looping sign demo and type the letter being signed.",
-        lesson_id=0,
-    )
+        exercises.append({
+            "title": f"Letter {practice_letter} Practice",
+            "prompt": f"Sign the letter {practice_letter}",
+            "instructions": practice_instructions,
+            "expected_sign": practice_letter.lower(),
+            "order": order,
+            "exercise_type": "gesture_practice",
+        })
+        order += 1
+
+        exercises.append({
+            "title": f"Sign Check: Letter {quiz_letter}",
+            "prompt": "Watch the sign and guess the letter",
+            "instructions": quiz_instructions,
+            "expected_sign": quiz_letter.lower(),
+            "order": order,
+            "exercise_type": "quiz",
+            "target_motion_data": build_quiz_preview(quiz_instructions, order),
+        })
+        order += 1
+
+    return {
+        "id": 0,
+        "title": "Alphabet",
+        "description": "Practice ASL fingerspelling with a selection of letters.",
+        "difficulty": "beginner",
+        "estimated_duration_minutes": 10,
+        "exercises": exercises,
+    }
 
 
 SEED_DATA = [
