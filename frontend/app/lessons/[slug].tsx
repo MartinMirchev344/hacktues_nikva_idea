@@ -83,7 +83,7 @@ export default function LessonDetail() {
   };
 
   const exerciseTypeLabel = (type: string) => {
-    if (type === 'quiz') return 'Read Signs';
+    if (type === 'quiz') return 'Watch & Guess';
     if (type === 'gesture_practice' || type === 'movement_drill') return 'Practice Signs';
     return type.replace(/_/g, ' ');
   };
@@ -95,12 +95,12 @@ export default function LessonDetail() {
       <View style={[styles.exerciseCard, done && styles.exerciseCardDone]}>
         <View style={styles.exerciseHeader}>
           <Text style={styles.exercisePrompt}>
-            {isQuiz ? 'Read the Sign' : item.prompt}
+            {item.prompt}
           </Text>
           {done && <Text style={styles.doneBadge}>✓ Done</Text>}
         </View>
         <Text style={styles.exerciseInstructions}>
-          {isQuiz ? 'Watch the gesture and identify what it means.' : item.instructions}
+          {item.instructions}
         </Text>
         <Text style={styles.exerciseType}>{exerciseTypeLabel(item.exercise_type)}</Text>
         <TouchableOpacity

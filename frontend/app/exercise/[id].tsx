@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  Animated,
   View,
   Text,
   TextInput,
@@ -10,6 +11,7 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
+  Easing,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
@@ -29,6 +31,28 @@ import { ScreenBackButton } from '../../components/screen-back-button';
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 type QuizPhase = 'answering' | 'results';
+type QuizPreviewData = {
+  cue?: string;
+  motion?: string;
+  steps?: string[];
+};
+
+function normalizeSignText(value: string | null | undefined) {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function formatSignText(value: string | null | undefined) {
+  const normalized = normalizeSignText(value);
+  if (!normalized) {
+    return 'Unknown sign';
+  }
+
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export default function Exercise() {
   const router = useRouter();
@@ -218,8 +242,8 @@ export default function Exercise() {
       return;
     }
     const correct =
-      quizAnswer.trim().toLowerCase() ===
-      attempt.exercise?.expected_sign?.toLowerCase();
+      normalizeSignText(quizAnswer) ===
+      normalizeSignText(attempt.exercise?.expected_sign);
     setQuizCorrect(correct);
     setQuizPhase('results');
     playSound(correct ? 'correct' : 'fail');
@@ -273,6 +297,8 @@ export default function Exercise() {
     );
   }
 
+  const isQuiz = attempt.exercise?.exercise_type === 'quiz';
+
   // Already completed
   if (attempt.status !== 'in_progress') {
     return (
@@ -292,7 +318,7 @@ export default function Exercise() {
   }
 
   // Camera permission denied
-  if (permission && !permission.granted) {
+  if (!isQuiz && permission && !permission.granted) {
     return (
       <View style={styles.center}>
         <ScreenBackButton fallbackHref="/home" style={styles.inlineBackButton} />
@@ -304,8 +330,6 @@ export default function Exercise() {
     );
   }
 
-  const isQuiz = attempt.exercise?.exercise_type === 'quiz';
-
   if (isQuiz) {
     return (
       <SafeAreaView style={styles.container}>
@@ -313,11 +337,7 @@ export default function Exercise() {
           <ScreenBackButton fallbackHref="/home" />
           <ExerciseCard attempt={attempt} />
 
-          {/* Gesture video placeholder */}
-          <View style={styles.videoPlaceholder}>
-            <Text style={styles.videoPlaceholderIcon}>▶</Text>
-            <Text style={styles.videoPlaceholderText}>Gesture video coming soon</Text>
-          </View>
+          <GestureDemoCard attempt={attempt} />
 
           {quizPhase === 'answering' && (
             <>
@@ -344,7 +364,7 @@ export default function Exercise() {
                   <Text style={styles.resultTitle}>{quizCorrect ? 'Correct!' : 'Not quite'}</Text>
                   {!quizCorrect && (
                     <Text style={styles.resultSub}>
-                      Answer: {attempt.exercise?.expected_sign}
+                      Answer: {formatSignText(attempt.exercise?.expected_sign)}
                     </Text>
                   )}
                 </View>
@@ -500,18 +520,135 @@ function ExerciseCard({ attempt }: { attempt: any }) {
   return (
     <View style={styles.card}>
       <Text style={styles.prompt}>
-        {isQuiz ? 'Read the Sign' : (attempt.exercise?.prompt || 'Practice this sign')}
+        {attempt.exercise?.prompt || (isQuiz ? 'Watch the Sign Demo' : 'Practice this sign')}
       </Text>
-      <Text style={styles.cardBody}>
-        {isQuiz
-          ? 'Watch the gesture and type what phrase or word it represents.'
-          : attempt.exercise?.instructions}
-      </Text>
+      <Text style={styles.cardBody}>{attempt.exercise?.instructions}</Text>
       {!isQuiz && (
         <Text style={styles.targetSign}>
-          Sign: <Text style={styles.targetSignValue}>{attempt.exercise?.expected_sign}</Text>
+          Sign: <Text style={styles.targetSignValue}>{formatSignText(attempt.exercise?.expected_sign)}</Text>
         </Text>
       )}
+    </View>
+  );
+}
+
+function GestureDemoCard({ attempt }: { attempt: any }) {
+  const preview = (attempt.exercise?.target_motion_data ?? {}) as QuizPreviewData;
+  const progress = useRef(new Animated.Value(0)).current;
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps = preview.steps?.length
+    ? preview.steps
+    : ['Get ready', 'Watch the hand movement', 'Think of the signed word'];
+  const cue = preview.cue ?? 'A short sign demo is looping below.';
+  const motion = preview.motion ?? 'outward_wave';
+
+  useEffect(() => {
+    progress.setValue(0);
+    const animation = Animated.loop(
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 2600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+    animation.start();
+
+    const intervalId = setInterval(() => {
+      setStepIndex((current) => (current + 1) % steps.length);
+    }, 2600);
+
+    return () => {
+      animation.stop();
+      clearInterval(intervalId);
+    };
+  }, [motion, progress, steps.length]);
+
+  const translateX =
+    motion === 'circle'
+      ? progress.interpolate({
+          inputRange: [0, 0.25, 0.5, 0.75, 1],
+          outputRange: [0, 22, 0, -22, 0],
+        })
+      : motion === 'forward_release'
+        ? progress.interpolate({
+            inputRange: [0, 0.35, 0.7, 1],
+            outputRange: [0, 18, 44, 72],
+          })
+        : motion === 'finger_wave'
+          ? progress.interpolate({
+              inputRange: [0, 0.25, 0.5, 0.75, 1],
+              outputRange: [0, 12, -10, 12, 0],
+            })
+          : progress.interpolate({
+              inputRange: [0, 0.35, 0.7, 1],
+              outputRange: [0, 20, 50, 80],
+            });
+
+  const translateY =
+    motion === 'circle'
+      ? progress.interpolate({
+          inputRange: [0, 0.25, 0.5, 0.75, 1],
+          outputRange: [0, -12, -22, -12, 0],
+        })
+      : motion === 'fist_circle'
+        ? progress.interpolate({
+            inputRange: [0, 0.25, 0.5, 0.75, 1],
+            outputRange: [0, -10, -18, -10, 0],
+          })
+        : motion === 'forward_release'
+          ? progress.interpolate({
+              inputRange: [0, 0.35, 0.7, 1],
+              outputRange: [10, 2, -6, -12],
+            })
+          : progress.interpolate({
+              inputRange: [0, 0.35, 0.7, 1],
+              outputRange: [18, 8, 0, -6],
+            });
+
+  const rotate =
+    motion === 'finger_wave'
+      ? progress.interpolate({
+          inputRange: [0, 0.25, 0.5, 0.75, 1],
+          outputRange: ['-12deg', '10deg', '-12deg', '10deg', '-12deg'],
+        })
+      : progress.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: ['-8deg', '6deg', '-8deg'],
+        });
+
+  const progressWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <View style={styles.videoPreviewCard}>
+      <View style={styles.videoPreviewHeader}>
+        <Text style={styles.videoPreviewEyebrow}>Sign Demo</Text>
+        <Text style={styles.videoPreviewLoop}>Looping Preview</Text>
+      </View>
+      <Text style={styles.videoPreviewCue}>{cue}</Text>
+
+      <View style={styles.videoStage}>
+        <View style={styles.videoGuideHorizontal} />
+        <View style={styles.videoGuideVertical} />
+        <Animated.View
+          style={[
+            styles.demoHand,
+            {
+              transform: [{ translateX }, { translateY }, { rotate }],
+            },
+          ]}
+        >
+          <View style={styles.demoHandCore} />
+        </Animated.View>
+      </View>
+
+      <View style={styles.videoProgressTrack}>
+        <Animated.View style={[styles.videoProgressFill, { width: progressWidth }]} />
+      </View>
+      <Text style={styles.videoStepText}>{steps[stepIndex]}</Text>
     </View>
   );
 }
@@ -741,20 +878,94 @@ const styles = StyleSheet.create({
   feedbackItem: { fontSize: 14, color: palette.text, lineHeight: 20 },
 
   // Quiz mode
-  videoPlaceholder: {
+  videoPreviewCard: {
+    backgroundColor: '#1F2924',
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+  },
+  videoPreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  videoPreviewEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(239,234,221,0.72)',
+  },
+  videoPreviewLoop: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#EFEADD',
+  },
+  videoPreviewCue: {
+    fontSize: 15,
+    color: '#EFEADD',
+    lineHeight: 22,
+  },
+  videoStage: {
     width: '100%',
     aspectRatio: 16 / 9,
     borderRadius: 16,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 2,
-    borderColor: palette.accent,
-    borderStyle: 'dashed',
+    backgroundColor: '#121814',
+    borderWidth: 1,
+    borderColor: 'rgba(239,234,221,0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 10,
   },
-  videoPlaceholderIcon: { fontSize: 40, color: palette.accent },
-  videoPlaceholderText: { fontSize: 15, color: palette.accent, fontWeight: '600' },
+  videoGuideHorizontal: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    height: 1,
+    backgroundColor: 'rgba(239,234,221,0.08)',
+  },
+  videoGuideVertical: {
+    position: 'absolute',
+    top: 18,
+    bottom: 18,
+    width: 1,
+    backgroundColor: 'rgba(239,234,221,0.08)',
+  },
+  demoHand: {
+    width: 44,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#D9CBB3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  demoHandCore: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(60,67,61,0.22)',
+  },
+  videoProgressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(239,234,221,0.12)',
+    overflow: 'hidden',
+  },
+  videoProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#C9B89C',
+  },
+  videoStepText: {
+    fontSize: 14,
+    color: '#EFEADD',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   quizInput: {
     backgroundColor: palette.surface,
     borderWidth: 1.5,
