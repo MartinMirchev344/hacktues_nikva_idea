@@ -12,10 +12,10 @@ import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
-import { login, register, verifyLoginOtp, forgotPassword, resetPassword } from '../lib/auth-api';
+import { login, register, forgotPassword, resetPassword } from '../lib/auth-api';
 import { palette } from '../constants/colors';
 
-type Step = 'credentials' | 'otp' | 'forgot-email' | 'forgot-reset';
+type Step = 'credentials' | 'forgot-email' | 'forgot-reset';
 
 export default function Auth() {
   const router = useRouter();
@@ -33,11 +33,8 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // OTP step
-  const [otpEmail, setOtpEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-
   // Forgot password
+  const [otpEmail, setOtpEmail] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -105,46 +102,12 @@ export default function Auth() {
       }
 
       const response = await login({ email: email.trim(), password });
-      if ('needs_otp' in response && response.needs_otp) {
-        setOtpEmail(response.email);
-        setOtpCode('');
-        setStep('otp');
-      } else {
-        setAuth(response);
-        router.replace('/home');
-      }
+      setAuth(response);
+      router.replace('/home');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to authenticate right now.');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) {
-      setErrorMessage('Please enter the 6-digit code.');
-      return;
-    }
-    try {
-      setIsSubmitting(true);
-      clearErrors();
-      const authResponse = await verifyLoginOtp(otpEmail, otpCode);
-      setAuth(authResponse);
-      router.replace('/home');
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Verification failed.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleResendLoginOtp = async () => {
-    try {
-      clearErrors();
-      await login({ email: otpEmail, password });
-      setInfoMessage('A new code has been sent to your email.');
-    } catch {
-      setErrorMessage('Failed to resend code.');
     }
   };
 
@@ -205,56 +168,6 @@ export default function Auth() {
       setErrorMessage('Failed to resend code.');
     }
   };
-
-  // ── OTP screen ──────────────────────────────────────────────────────────────
-  if (step === 'otp') {
-    return (
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.formContainer}>
-          <Text style={styles.title}>Check Your Email</Text>
-          <Text style={styles.subtitle}>
-            We sent a 6-digit code to{'\n'}
-            <Text style={styles.emailHighlight}>{otpEmail}</Text>
-          </Text>
-
-          <TextInput
-            style={[styles.input, styles.otpInput]}
-            placeholder="000000"
-            placeholderTextColor={palette.text}
-            value={otpCode}
-            onChangeText={(v) => { setOtpCode(v.replace(/\D/g, '').slice(0, 6)); clearErrors(); }}
-            keyboardType="number-pad"
-            maxLength={6}
-            textAlign="center"
-          />
-
-          {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-          {!!infoMessage && <Text style={styles.infoText}>{infoMessage}</Text>}
-
-          <TouchableOpacity
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
-            onPress={handleVerifyOtp}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color={palette.background} />
-            ) : (
-              <Text style={styles.buttonText}>Verify</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.linkRow}>
-            <TouchableOpacity onPress={handleResendLoginOtp}>
-              <Text style={styles.linkText}>Resend code</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setStep('credentials'); clearErrors(); }}>
-              <Text style={styles.linkText}>Back to login</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    );
-  }
 
   // ── Forgot password: enter email ─────────────────────────────────────────────
   if (step === 'forgot-email') {

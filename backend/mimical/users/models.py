@@ -19,7 +19,6 @@ class User(AbstractUser):
 
 class OTPCode(models.Model):
     class Purpose(models.TextChoices):
-        LOGIN = 'login', 'Login'
         PASSWORD_RESET = 'password_reset', 'Password Reset'
 
     email = models.EmailField()

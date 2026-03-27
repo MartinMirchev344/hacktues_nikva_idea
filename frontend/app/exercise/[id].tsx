@@ -53,6 +53,22 @@ function formatSignText(value: string | null | undefined) {
   return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function isAlphabetDetectionError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('no hand detected') ||
+    normalized.includes('could not identify the hand sign')
+  );
+}
+
+function getAlphabetDetectionWarning(message: string) {
+  if (message.toLowerCase().includes('no hand detected')) {
+    return 'The photo was taken, but no hand sign was detected. Keep your whole hand inside the frame, use good lighting, and try again.';
+  }
+
+  return 'The photo was taken, but the sign could not be recognized. Try again with a clearer handshape, better lighting, or a slightly different angle.';
+}
+
 export default function Exercise() {
   const router = useRouter();
   const { id, isLastExercise, exerciseQueue, queueIndex } = useLocalSearchParams<{
@@ -78,6 +94,7 @@ export default function Exercise() {
   // Alphabet photo mode state
   const [alphabetPrediction, setAlphabetPrediction] = useState<AlphabetPrediction | null>(null);
   const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
+  const [isWebCameraReady, setIsWebCameraReady] = useState(Platform.OS !== 'web');
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -88,12 +105,66 @@ export default function Exercise() {
   const webRecorderRef = useRef<MediaRecorder | null>(null);
   const webChunksRef = useRef<Blob[]>([]);
 
+  const attachWebVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    webVideoRef.current = node;
+    setIsWebCameraReady(false);
+
+    if (node && webStreamRef.current) {
+      node.srcObject = webStreamRef.current;
+      node.play?.().catch(() => {});
+    }
+  }, []);
+
+  const waitForWebVideoReady = useCallback((video: HTMLVideoElement) => {
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      setIsWebCameraReady(true);
+      return Promise.resolve();
+    }
+
+    setIsWebCameraReady(false);
+
+    return new Promise<void>((resolve, reject) => {
+      let finished = false;
+
+      const cleanup = () => {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timeoutId);
+        video.removeEventListener('loadedmetadata', tryResolve);
+        video.removeEventListener('canplay', tryResolve);
+        video.removeEventListener('playing', tryResolve);
+      };
+
+      const tryResolve = () => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setIsWebCameraReady(true);
+          cleanup();
+          resolve();
+        }
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Camera is still starting. Please wait a moment and try again.'));
+      }, 2500);
+
+      video.addEventListener('loadedmetadata', tryResolve);
+      video.addEventListener('canplay', tryResolve);
+      video.addEventListener('playing', tryResolve);
+      video.play?.().catch(() => {});
+      tryResolve();
+    });
+  }, []);
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
       .then(stream => {
         webStreamRef.current = stream;
-        if (webVideoRef.current) webVideoRef.current.srcObject = stream;
+        if (webVideoRef.current) {
+          webVideoRef.current.srcObject = stream;
+          webVideoRef.current.play?.().catch(() => {});
+        }
       })
       .catch(() => {});
     return () => { webStreamRef.current?.getTracks().forEach(t => t.stop()); };
@@ -194,25 +265,40 @@ export default function Exercise() {
   const takeAlphabetPhoto = async () => {
     if (Platform.OS === 'web') {
       const video = webVideoRef.current as HTMLVideoElement | null;
-      if (!video) return;
+      if (!video) {
+        Alert.alert('Camera unavailable', 'The camera preview is not ready yet. Please try again.');
+        return;
+      }
       setPhase('uploading');
+      setCapturedPhotoUri(null);
       try {
+        await waitForWebVideoReady(video);
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d')!.drawImage(video, 0, 0);
-        const blob = await new Promise<Blob>((resolve) =>
-          canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9)
-        );
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((capturedBlob) => {
+            if (capturedBlob) {
+              resolve(capturedBlob);
+              return;
+            }
+            reject(new Error('Failed to capture a frame from the camera.'));
+          }, 'image/jpeg', 0.9);
+        });
         const prediction = await predictAlphabetPhotoWeb(blob);
         setAlphabetPrediction(prediction);
         setCapturedPhotoUri(canvas.toDataURL('image/jpeg'));
         setPhase('results');
         const expectedSign = attempt.exercise?.expected_sign ?? '';
         playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
-      } catch {
+      } catch (err) {
         setPhase('idle');
-        Alert.alert('Error', 'Failed to process photo. Please try again.');
+        const message = err instanceof Error ? err.message : 'Failed to process photo. Please try again.';
+        Alert.alert(
+          isAlphabetDetectionError(message) ? 'No sign detected' : 'Try again',
+          isAlphabetDetectionError(message) ? getAlphabetDetectionWarning(message) : message
+        );
       }
       return;
     }
@@ -234,7 +320,10 @@ export default function Exercise() {
       setPhase('idle');
       setCapturedPhotoUri(null);
       const msg = err instanceof Error ? err.message : 'Failed to process photo. Please try again.';
-      Alert.alert('Try again', msg);
+      Alert.alert(
+        isAlphabetDetectionError(msg) ? 'No sign detected' : 'Try again',
+        isAlphabetDetectionError(msg) ? getAlphabetDetectionWarning(msg) : msg
+      );
     }
   };
 
@@ -488,6 +577,8 @@ export default function Exercise() {
   if (isAlphabetExercise) {
     const expectedSign = attempt.exercise?.expected_sign ?? '';
     const isCorrect = alphabetPrediction?.predicted_letter === expectedSign;
+    const isAlphabetCaptureDisabled =
+      phase !== 'idle' || (Platform.OS === 'web' && !isWebCameraReady);
 
     return (
       <SafeAreaView style={styles.container}>
@@ -499,7 +590,16 @@ export default function Exercise() {
             <View style={[styles.cameraWrapper, Platform.OS === 'web' && styles.cameraWrapperWeb]}>
               {Platform.OS === 'web' ? (
                 // @ts-ignore
-                <video ref={webVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <video
+                  ref={attachWebVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  onLoadedMetadata={() => setIsWebCameraReady(true)}
+                  onCanPlay={() => setIsWebCameraReady(true)}
+                  onPlaying={() => setIsWebCameraReady(true)}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               ) : (
                 <CameraView ref={cameraRef} style={styles.camera} facing="front" />
               )}
@@ -517,12 +617,25 @@ export default function Exercise() {
 
           {phase === 'idle' && (
             <>
-              <TouchableOpacity style={styles.recordBtn} onPress={takeAlphabetPhoto}>
+              <TouchableOpacity
+                style={[styles.recordBtn, isAlphabetCaptureDisabled && styles.captureBtnDisabled]}
+                onPress={takeAlphabetPhoto}
+                disabled={isAlphabetCaptureDisabled}
+              >
                 <View style={styles.photoBtnInner} />
               </TouchableOpacity>
               <Text style={styles.hint}>
-                Hold up the letter "{expectedSign.toUpperCase()}" and tap to take a photo
+                {Platform.OS === 'web' && !isWebCameraReady
+                  ? 'Camera is warming up...'
+                  : `Hold up the letter "${expectedSign.toUpperCase()}" and tap to take a photo`}
               </Text>
+              <View style={styles.warningCard}>
+                <Text style={styles.warningTitle}>Warning</Text>
+                <Text style={styles.warningText}>
+                  If no sign is detected, the photo was still taken. It usually means your hand was out of frame,
+                  the lighting was too weak, or the handshape was unclear.
+                </Text>
+              </View>
             </>
           )}
 
@@ -588,7 +701,7 @@ export default function Exercise() {
             {Platform.OS === 'web' ? (
               // @ts-ignore - web only element
               <video
-                ref={webVideoRef}
+                ref={attachWebVideoRef}
                 autoPlay
                 muted
                 playsInline
@@ -933,6 +1046,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   stopBtnInner: { width: 28, height: 28, borderRadius: 4, backgroundColor: palette.background },
+  captureBtnDisabled: { opacity: 0.45 },
 
   // Results
   resultBanner: {
@@ -962,6 +1076,24 @@ const styles = StyleSheet.create({
   },
   predictionSign: { fontSize: 28, fontWeight: 'bold', color: '#EFEADD' },
   predictionConfidence: { fontSize: 15, color: '#EFEADD' },
+  warningCard: {
+    backgroundColor: '#F4E2B8',
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+  },
+  warningTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: '#5A4020',
+  },
+  warningText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#5A4020',
+  },
   alternativePredictions: {
     marginTop: 10,
     paddingTop: 10,

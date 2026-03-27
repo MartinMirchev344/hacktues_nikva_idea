@@ -136,10 +136,8 @@ export type AuthResponse = {
   };
 };
 
-export type LoginResponse = { needs_otp: true; email: string } | AuthResponse;
-
-export function login(payload: AuthPayload): Promise<LoginResponse> {
-  return request<LoginResponse>('/login/', {
+export function login(payload: AuthPayload): Promise<AuthResponse> {
+  return request<AuthResponse>('/login/', {
     email: payload.email,
     password: payload.password,
   });
@@ -152,10 +150,6 @@ export function register(payload: AuthPayload) {
     password: payload.password,
     password2: payload.confirmPassword ?? '',
   });
-}
-
-export function verifyLoginOtp(email: string, code: string): Promise<AuthResponse> {
-  return request<AuthResponse>('/verify-otp/', { email, code, purpose: 'login' });
 }
 
 export function forgotPassword(email: string): Promise<{ detail: string }> {
