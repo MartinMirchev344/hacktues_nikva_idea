@@ -71,90 +71,413 @@ def detect_hand_landmarks(pil_image):
     return None
 
 
-def classify_asl_landmarks(landmarks):
-    """
-    Rule-based ASL letter classifier from 21 hand landmarks.
-    Works for the letters: A B D F J K M R T V W
-    Returns (letter, confidence_float).
-    """
-    lm = np.array([[l.x, l.y, l.z] for l in landmarks])  # (21, 3)
+def _clamp01(value):
+    return float(max(0.0, min(1.0, value)))
 
+
+def _score_ge(value, target, softness):
+    if value >= target:
+        return 1.0
+    return _clamp01((value - (target - softness)) / max(softness, 1e-6))
+
+
+def _score_le(value, target, softness):
+    if value <= target:
+        return 1.0
+    return _clamp01(((target + softness) - value) / max(softness, 1e-6))
+
+
+def _average(*values):
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
+
+
+def _segment_intersection(p1, p2, q1, q2):
+    def orientation(a, b, c):
+        cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        if abs(cross) < 1e-6:
+            return 0
+        return 1 if cross > 0 else -1
+
+    o1 = orientation(p1, p2, q1)
+    o2 = orientation(p1, p2, q2)
+    o3 = orientation(q1, q2, p1)
+    o4 = orientation(q1, q2, p2)
+    return o1 != o2 and o3 != o4
+
+
+def _normalize_expected_letter(value):
+    normalized = (value or "").strip().lower()
+    if len(normalized) == 1 and normalized.isalpha():
+        return normalized
+    return None
+
+
+def analyze_asl_landmarks(landmarks):
+    """
+    Static handshape analysis for alphabet practice.
+    Supports the letters: A B D F K M R T V W.
+    """
+    lm = np.array([[landmark.x, landmark.y, landmark.z] for landmark in landmarks], dtype=np.float32)
     wrist = lm[0, :2]
+    palm_width = np.linalg.norm(lm[17, :2] - lm[5, :2])
+    palm_height = np.linalg.norm(lm[9, :2] - wrist)
+    hand_size = max(float(max(palm_width, palm_height)), 1e-6)
 
-    # Hand scale: wrist → middle-finger MCP (landmark 9)
-    hand_size = np.linalg.norm(lm[9, :2] - wrist)
     if hand_size < 1e-6:
-        return None, 0.0
+        return {
+            "predicted_letter": None,
+            "confidence": 0.0,
+            "top_predictions": [],
+            "analysis": {"summary": "invalid_landmarks"},
+        }
 
-    def extended(tip, pip):
-        """True if fingertip is further from wrist than the PIP joint."""
-        return (np.linalg.norm(lm[tip, :2] - wrist) >
-                np.linalg.norm(lm[pip, :2] - wrist) * 1.15)
-
-    index_up  = extended(8,  6)
-    middle_up = extended(12, 10)
-    ring_up   = extended(16, 14)
-    pinky_up  = extended(20, 18)
-
-    # Palm centre x (between index MCP and pinky MCP)
-    palm_cx = (lm[5, 0] + lm[17, 0]) / 2.0
-
-    # Thumb sideways: tip x is noticeably away from the palm centre line
-    thumb_sideways = abs(lm[4, 0] - palm_cx) > hand_size * 0.35
+    palm_center = (lm[5, :2] + lm[17, :2]) / 2.0
+    palm_x_axis = lm[17, :2] - lm[5, :2]
+    palm_x_norm = np.linalg.norm(palm_x_axis)
+    if palm_x_norm < 1e-6:
+        palm_x_axis = np.array([1.0, 0.0], dtype=np.float32)
+    else:
+        palm_x_axis = palm_x_axis / palm_x_norm
 
     def dist(a, b):
-        """Normalised 2-D distance between two landmark indices."""
-        return np.linalg.norm(lm[a, :2] - lm[b, :2]) / hand_size
+        return float(np.linalg.norm(lm[a, :2] - lm[b, :2]) / hand_size)
 
-    thumb_index_touch   = dist(4, 8)  < 0.40
-    # T: thumb tucked between index and middle at MCP level (near index MCP)
-    thumb_near_index_mcp = dist(4, 5) < 0.40
-    index_middle_tip_gap = dist(8, 12)
-    index_middle_base_gap = dist(5, 9)
-    index_middle_spread_ratio = index_middle_tip_gap / max(index_middle_base_gap, 1e-6)
+    def midpoint_distance(index, a, b):
+        midpoint = (lm[a, :2] + lm[b, :2]) / 2.0
+        return float(np.linalg.norm(lm[index, :2] - midpoint) / hand_size)
 
-    # ── Pattern matching ──────────────────────────────────────────────────────
-    # B: all four fingers up, thumb folded
-    if index_up and middle_up and ring_up and pinky_up:
-        return 'b', 82.0
+    def lateral_distance(index):
+        return float(abs(np.dot(lm[index, :2] - palm_center, palm_x_axis)) / hand_size)
 
-    # W: index + middle + ring up, pinky down
-    if index_up and middle_up and ring_up and not pinky_up:
-        return 'w', 80.0
+    finger_points = {
+        "index": (5, 6, 8),
+        "middle": (9, 10, 12),
+        "ring": (13, 14, 16),
+        "pinky": (17, 18, 20),
+    }
 
-    # K: index + middle up, thumb forward/sideways
-    if index_up and middle_up and not ring_up and not pinky_up and thumb_sideways:
-        return 'k', 78.0
+    finger_extension_scores = {}
+    finger_fold_scores = {}
 
-    # V / R: same raised fingers, separated by fingertip spread
-    if index_up and middle_up and not ring_up and not pinky_up:
-        if index_middle_spread_ratio > 1.35:
-            return 'v', 76.0
-        if index_middle_spread_ratio < 0.85:
-            return 'r', 74.0
-        return None, 0.0
+    for name, (mcp, pip, tip) in finger_points.items():
+        tip_wrist_ratio = float(
+            np.linalg.norm(lm[tip, :2] - wrist) / max(np.linalg.norm(lm[pip, :2] - wrist), 1e-6)
+        )
+        tip_height = float((lm[pip, 1] - lm[tip, 1]) / hand_size)
+        finger_extension_scores[name] = _average(
+            _score_ge(tip_wrist_ratio, 1.14, 0.20),
+            _score_ge(tip_height, 0.20, 0.14),
+        )
+        finger_fold_scores[name] = _average(
+            _score_le(tip_wrist_ratio, 1.05, 0.20),
+            _score_le(tip_height, 0.08, 0.18),
+        )
 
-    # D: only index finger up
-    if index_up and not middle_up and not ring_up and not pinky_up:
-        return 'd', 79.0
+    extended_fingers = [name for name, score in finger_extension_scores.items() if score >= 0.62]
+    folded_fingers = [name for name, score in finger_fold_scores.items() if score >= 0.62]
 
-    # J / I: only pinky up
-    if pinky_up and not index_up and not middle_up and not ring_up:
-        return 'j', 77.0
+    thumb_lateral = lateral_distance(4)
+    thumb_index_touch = dist(4, 8)
+    thumb_middle_tip = dist(4, 12)
+    thumb_ring_tip = dist(4, 16)
+    thumb_middle_mcp = dist(4, 9)
+    thumb_index_middle_gap = midpoint_distance(4, 5, 9)
 
-    # F: index bent/touching thumb, middle + ring + pinky up
-    if not index_up and middle_up and ring_up and pinky_up:
-        return 'f', 75.0
+    index_middle_spread = dist(8, 12) / max(dist(5, 9), 1e-6)
+    middle_ring_spread = dist(12, 16) / max(dist(9, 13), 1e-6)
+    ring_pinky_spread = dist(16, 20) / max(dist(13, 17), 1e-6)
+    crossed_index_middle = _segment_intersection(lm[6, :2], lm[8, :2], lm[10, :2], lm[12, :2])
 
-    # Fist family: no fingers extended
-    if not index_up and not middle_up and not ring_up and not pinky_up:
-        if thumb_sideways:
-            return 'a', 72.0          # A: fist, thumb to the side
-        if thumb_near_index_mcp:
-            return 't', 67.0          # T: thumb between index and middle at base
-        return 'm', 63.0              # M / S default
+    bbox_min = lm[:, :2].min(axis=0)
+    bbox_max = lm[:, :2].max(axis=0)
+    hand_box_width = float(bbox_max[0] - bbox_min[0])
+    hand_box_height = float(bbox_max[1] - bbox_min[1])
+    hand_box_span = max(hand_box_width, hand_box_height)
+    center_offset = float(np.linalg.norm(((bbox_min + bbox_max) / 2.0) - np.array([0.5, 0.5])))
+    clipped_edges = []
+    margin = 0.05
+    if bbox_min[0] < margin:
+        clipped_edges.append("left")
+    if bbox_max[0] > (1.0 - margin):
+        clipped_edges.append("right")
+    if bbox_min[1] < margin:
+        clipped_edges.append("top")
+    if bbox_max[1] > (1.0 - margin):
+        clipped_edges.append("bottom")
 
-    return None, 0.0
+    quality_score = 1.0
+    if hand_box_span < 0.28:
+        quality_score -= 0.15
+    if center_offset > 0.30:
+        quality_score -= 0.10
+    if clipped_edges:
+        quality_score -= min(0.16, 0.06 * len(clipped_edges))
+    quality_score = _clamp01(quality_score)
+
+    scores = {
+        "a": _average(
+            finger_fold_scores["index"],
+            finger_fold_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_ge(thumb_lateral, 0.38, 0.18),
+            1.0 - _score_le(thumb_index_middle_gap, 0.26, 0.14),
+        ),
+        "b": _average(
+            finger_extension_scores["index"],
+            finger_extension_scores["middle"],
+            finger_extension_scores["ring"],
+            finger_extension_scores["pinky"],
+            _score_le(thumb_lateral, 0.34, 0.18),
+            _score_le(index_middle_spread, 1.15, 0.35),
+            _score_le(middle_ring_spread, 1.15, 0.35),
+            _score_le(ring_pinky_spread, 1.15, 0.35),
+        ),
+        "d": _average(
+            finger_extension_scores["index"],
+            finger_fold_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _average(
+                _score_le(thumb_middle_tip, 0.44, 0.18),
+                _score_le(thumb_ring_tip, 0.46, 0.18),
+            ),
+        ),
+        "f": _average(
+            _score_le(thumb_index_touch, 0.34, 0.14),
+            finger_fold_scores["index"],
+            finger_extension_scores["middle"],
+            finger_extension_scores["ring"],
+            finger_extension_scores["pinky"],
+        ),
+        "k": _average(
+            finger_extension_scores["index"],
+            finger_extension_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_le(thumb_middle_mcp, 0.42, 0.16),
+            _score_ge(index_middle_spread, 1.05, 0.28),
+            1.0 - _score_le(thumb_index_touch, 0.30, 0.12),
+        ),
+        "m": _average(
+            finger_fold_scores["index"],
+            finger_fold_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_le(thumb_ring_tip, 0.42, 0.20),
+            1.0 - _score_le(thumb_lateral, 0.34, 0.14),
+            1.0 - _score_le(thumb_index_middle_gap, 0.24, 0.12),
+        ),
+        "r": _average(
+            finger_extension_scores["index"],
+            finger_extension_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_le(index_middle_spread, 0.95, 0.20),
+            1.0 if crossed_index_middle else 0.0,
+        ),
+        "t": _average(
+            finger_fold_scores["index"],
+            finger_fold_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_le(thumb_index_middle_gap, 0.24, 0.12),
+            _score_le(thumb_lateral, 0.28, 0.12),
+        ),
+        "v": _average(
+            finger_extension_scores["index"],
+            finger_extension_scores["middle"],
+            finger_fold_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_ge(index_middle_spread, 1.28, 0.32),
+            1.0 - _score_le(thumb_middle_mcp, 0.36, 0.16),
+            0.0 if crossed_index_middle else 1.0,
+        ),
+        "w": _average(
+            finger_extension_scores["index"],
+            finger_extension_scores["middle"],
+            finger_extension_scores["ring"],
+            finger_fold_scores["pinky"],
+            _score_ge(index_middle_spread, 1.08, 0.28),
+            _score_ge(middle_ring_spread, 1.08, 0.28),
+        ),
+    }
+
+    ranked_candidates = [
+        {
+            "letter": letter,
+            "confidence": round(_clamp01(score * quality_score) * 100, 1),
+        }
+        for letter, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    top_candidate = ranked_candidates[0]
+    runner_up = ranked_candidates[1]
+    top_confidence = top_candidate["confidence"]
+    confidence_gap = top_candidate["confidence"] - runner_up["confidence"]
+    predicted_letter = top_candidate["letter"]
+
+    if top_confidence < 48.0 or confidence_gap < 6.0:
+        predicted_letter = None
+        top_confidence = 0.0
+
+    return {
+        "predicted_letter": predicted_letter,
+        "confidence": round(top_confidence, 1),
+        "top_predictions": [
+            {"letter": candidate["letter"], "confidence": candidate["confidence"]}
+            for candidate in ranked_candidates[:3]
+        ],
+        "analysis": {
+            "summary": "ok",
+            "extended_fingers": extended_fingers,
+            "folded_fingers": folded_fingers,
+            "finger_extension_scores": {
+                name: round(score * 100, 1) for name, score in finger_extension_scores.items()
+            },
+            "quality": {
+                "score": round(quality_score * 100, 1),
+                "hand_box_span": round(hand_box_span, 3),
+                "center_offset": round(center_offset, 3),
+                "clipped_edges": clipped_edges,
+            },
+            "thumb": {
+                "lateral_distance": round(thumb_lateral, 3),
+                "index_touch_distance": round(thumb_index_touch, 3),
+                "middle_base_distance": round(thumb_middle_mcp, 3),
+                "index_middle_gap_distance": round(thumb_index_middle_gap, 3),
+                "ring_tip_distance": round(thumb_ring_tip, 3),
+            },
+            "spreads": {
+                "index_middle": round(index_middle_spread, 3),
+                "middle_ring": round(middle_ring_spread, 3),
+                "ring_pinky": round(ring_pinky_spread, 3),
+            },
+            "crossed_index_middle": crossed_index_middle,
+        },
+    }
+
+
+def classify_asl_landmarks(landmarks):
+    analysis = analyze_asl_landmarks(landmarks)
+    return analysis["predicted_letter"], analysis["confidence"]
+
+
+def build_alphabet_feedback(expected_letter, prediction):
+    analysis = prediction["analysis"]
+    quality = analysis["quality"]
+    extended = set(analysis["extended_fingers"])
+    thumb = analysis["thumb"]
+    spreads = analysis["spreads"]
+    feedback_items = []
+
+    if quality["hand_box_span"] < 0.28:
+        feedback_items.append("Move your hand a little closer to the camera so the finger details are easier to read.")
+    if quality["center_offset"] > 0.30:
+        feedback_items.append("Center your hand in the frame before taking the photo.")
+    if quality["clipped_edges"]:
+        feedback_items.append("Keep your whole hand inside the frame and leave a small margin around it.")
+
+    expected_specific = {
+        "a": [
+            (bool(extended), "Curl all four fingers into a fist for the letter A."),
+            (thumb["lateral_distance"] < 0.36, "Rest your thumb on the outside of the fist instead of tucking it between fingers."),
+        ],
+        "b": [
+            (not {"index", "middle", "ring", "pinky"}.issubset(extended), "Straighten all four fingers fully for the letter B."),
+            (thumb["lateral_distance"] > 0.34, "Fold your thumb across the palm so it stays tucked in."),
+            (max(spreads["index_middle"], spreads["middle_ring"], spreads["ring_pinky"]) > 1.20, "Keep the four fingers closer together so the hand looks flatter."),
+        ],
+        "d": [
+            ("index" not in extended, "Raise the index finger straight up."),
+            (bool({"middle", "ring", "pinky"} & extended), "Tuck the middle, ring, and pinky fingers down."),
+            (thumb["middle_base_distance"] > 0.44, "Bring the thumb closer to the middle finger to form the D handshape."),
+        ],
+        "f": [
+            (thumb["index_touch_distance"] > 0.34, "Touch the thumb and index finger to form a clear circle."),
+            (not {"middle", "ring", "pinky"}.issubset(extended), "Keep the middle, ring, and pinky fingers up."),
+        ],
+        "k": [
+            (not {"index", "middle"}.issubset(extended), "Lift the index and middle fingers into a V shape."),
+            (bool({"ring", "pinky"} & extended), "Keep the ring and pinky fingers folded down."),
+            (thumb["middle_base_distance"] > 0.42, "Place the thumb against the middle finger instead of letting it float away."),
+        ],
+        "m": [
+            (bool(extended), "Fold the fingers down into a closed fist for M."),
+            (thumb["ring_tip_distance"] > 0.44, "Tuck the thumb deeper under the first three fingers."),
+        ],
+        "r": [
+            (not {"index", "middle"}.issubset(extended), "Lift the index and middle fingers for R."),
+            (not analysis["crossed_index_middle"], "Cross the middle finger over the index finger more clearly."),
+            (bool({"ring", "pinky"} & extended), "Keep the ring and pinky fingers folded down."),
+        ],
+        "t": [
+            (bool(extended), "Close the hand into a fist for T."),
+            (thumb["index_middle_gap_distance"] > 0.26, "Tuck the thumb between the index and middle fingers."),
+        ],
+        "v": [
+            (not {"index", "middle"}.issubset(extended), "Raise the index and middle fingers for V."),
+            (spreads["index_middle"] < 1.24, "Spread the index and middle fingers farther apart."),
+            (bool({"ring", "pinky"} & extended), "Keep the ring and pinky fingers folded down."),
+        ],
+        "w": [
+            (not {"index", "middle", "ring"}.issubset(extended), "Lift the index, middle, and ring fingers for W."),
+            ("pinky" in extended, "Tuck the pinky down to separate W from B."),
+            (min(spreads["index_middle"], spreads["middle_ring"]) < 1.08, "Spread the three raised fingers a little more."),
+        ],
+    }
+
+    for should_add, message in expected_specific.get(expected_letter, []):
+        if should_add and message not in feedback_items:
+            feedback_items.append(message)
+        if len(feedback_items) >= 3:
+            break
+
+    return feedback_items[:3]
+
+
+def build_alphabet_response(prediction, expected_letter=None):
+    predicted_letter = prediction["predicted_letter"]
+    confidence = prediction["confidence"]
+    is_correct = None
+    accuracy_score = round(confidence, 1)
+    handshape_score = round(confidence, 1)
+    coach_summary = "The model found a handshape, but it still needs a clearer view to be fully confident."
+    feedback_items = []
+
+    if expected_letter:
+        is_correct = predicted_letter == expected_letter
+        accuracy_score = round(confidence if is_correct else max(confidence * 0.45, 5.0), 1)
+        if is_correct:
+            coach_summary = (
+                f'This looks like a solid "{expected_letter.upper()}" handshape. '
+                f'The letter pattern matches with {confidence:.0f}% confidence.'
+            )
+        else:
+            coach_summary = (
+                f'This looks closer to "{predicted_letter.upper()}" than "{expected_letter.upper()}". '
+                "Adjust the finger shape and try another photo."
+            )
+        feedback_items = build_alphabet_feedback(expected_letter, prediction)
+    elif predicted_letter:
+        coach_summary = (
+            f'The handshape looks closest to "{predicted_letter.upper()}" with {confidence:.0f}% confidence.'
+        )
+
+    return {
+        "predicted_letter": predicted_letter,
+        "confidence": confidence,
+        "top_predictions": prediction["top_predictions"],
+        "expected_letter": expected_letter,
+        "is_correct": is_correct,
+        "accuracy_score": accuracy_score,
+        "handshape_score": handshape_score,
+        "coach_summary": coach_summary,
+        "feedback_items": feedback_items,
+        "analysis": prediction["analysis"],
+    }
 
 
 class RecognitionHealthView(APIView):
@@ -193,19 +516,17 @@ class AlphabetPredictView(APIView):
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
 
-            letter, confidence = classify_asl_landmarks(landmarks)
+            expected_letter = _normalize_expected_letter(request.data.get("expected_letter"))
+            prediction = analyze_asl_landmarks(landmarks)
+            letter = prediction["predicted_letter"]
 
             if not letter:
                 return Response(
-                    {'detail': 'Could not identify the hand sign. Try a different angle.'},
+                    {'detail': 'Could not identify the hand sign clearly enough. Try a clearer handshape or a slightly different angle.'},
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
 
-            return Response({
-                'predicted_letter': letter,
-                'confidence': round(confidence, 1),
-                'top_predictions': [{'letter': letter, 'confidence': round(confidence, 1)}],
-            })
+            return Response(build_alphabet_response(prediction, expected_letter=expected_letter))
 
         except Exception as exc:
             return Response(

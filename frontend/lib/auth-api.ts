@@ -350,6 +350,13 @@ export type AlphabetPrediction = {
   predicted_letter: string;
   confidence: number;
   top_predictions: Array<{ letter: string; confidence: number }>;
+  expected_letter?: string | null;
+  is_correct?: boolean | null;
+  accuracy_score?: number;
+  handshape_score?: number;
+  coach_summary?: string;
+  feedback_items?: string[];
+  analysis?: Record<string, unknown>;
 };
 
 async function throwWithDetail(response: Response): Promise<never> {
@@ -357,7 +364,10 @@ async function throwWithDetail(response: Response): Promise<never> {
   throw new Error(data?.detail ?? 'Prediction failed');
 }
 
-export async function predictAlphabetPhoto(imageUri: string): Promise<AlphabetPrediction> {
+export async function predictAlphabetPhoto(
+  imageUri: string,
+  expectedLetter?: string
+): Promise<AlphabetPrediction> {
   const token = await getToken();
   const formData = new FormData();
   formData.append('image', {
@@ -365,6 +375,9 @@ export async function predictAlphabetPhoto(imageUri: string): Promise<AlphabetPr
     name: 'photo.jpg',
     type: 'image/jpeg',
   } as any);
+  if (expectedLetter) {
+    formData.append('expected_letter', expectedLetter);
+  }
   const response = await fetchWithNetworkHint(
     `${API_ROOT_URL}/recognition/alphabet/predict/`,
     { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }
@@ -373,10 +386,16 @@ export async function predictAlphabetPhoto(imageUri: string): Promise<AlphabetPr
   return response.json();
 }
 
-export async function predictAlphabetPhotoWeb(blob: Blob): Promise<AlphabetPrediction> {
+export async function predictAlphabetPhotoWeb(
+  blob: Blob,
+  expectedLetter?: string
+): Promise<AlphabetPrediction> {
   const token = await getToken();
   const formData = new FormData();
   formData.append('image', blob, 'photo.jpg');
+  if (expectedLetter) {
+    formData.append('expected_letter', expectedLetter);
+  }
   const response = await fetchWithNetworkHint(
     `${API_ROOT_URL}/recognition/alphabet/predict/`,
     { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }

@@ -276,6 +276,7 @@ export default function Exercise() {
       setAlphabetCaptureNotice(null);
       try {
         await waitForWebVideoReady(video);
+        const expectedSign = attempt.exercise?.expected_sign ?? '';
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -291,11 +292,10 @@ export default function Exercise() {
             reject(new Error('Failed to capture a frame from the camera.'));
           }, 'image/jpeg', 0.9);
         });
-        const prediction = await predictAlphabetPhotoWeb(blob);
+        const prediction = await predictAlphabetPhotoWeb(blob, expectedSign);
         setAlphabetPrediction(prediction);
         setAlphabetCaptureNotice(null);
         setPhase('results');
-        const expectedSign = attempt.exercise?.expected_sign ?? '';
         playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
       } catch (err) {
         setPhase('idle');
@@ -318,12 +318,12 @@ export default function Exercise() {
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (photo?.uri) {
+        const expectedSign = attempt.exercise?.expected_sign ?? '';
         setCapturedPhotoUri(photo.uri);
-        const prediction = await predictAlphabetPhoto(photo.uri);
+        const prediction = await predictAlphabetPhoto(photo.uri, expectedSign);
         setAlphabetPrediction(prediction);
         setAlphabetCaptureNotice(null);
         setPhase('results');
-        const expectedSign = attempt.exercise?.expected_sign ?? '';
         playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
       } else {
         setPhase('idle');
@@ -353,19 +353,22 @@ export default function Exercise() {
   const handleAlphabetSubmit = async () => {
     if (!alphabetPrediction) return;
     const expectedSign = attempt.exercise?.expected_sign ?? '';
-    const isCorrect = alphabetPrediction.predicted_letter === expectedSign;
+    const isCorrect = alphabetPrediction.is_correct ?? alphabetPrediction.predicted_letter === expectedSign;
     const confidence = alphabetPrediction.confidence;
     setIsSubmitting(true);
     try {
       const saved = await submitAttempt(attempt.id, {
         status: 'completed',
-        accuracy_score: isCorrect ? confidence : Math.max(confidence * 0.5, 5),
+        accuracy_score: alphabetPrediction.accuracy_score ?? (isCorrect ? confidence : Math.max(confidence * 0.5, 5)),
         speed_score: 100,
-        handshape_score: confidence,
+        handshape_score: alphabetPrediction.handshape_score ?? confidence,
         detected_sign: alphabetPrediction.predicted_letter,
-        coach_summary: isCorrect
-          ? `Correct! The model recognized "${alphabetPrediction.predicted_letter.toUpperCase()}" with ${confidence.toFixed(0)}% confidence.`
-          : `The model saw "${alphabetPrediction.predicted_letter.toUpperCase()}" instead of "${expectedSign.toUpperCase()}". Try adjusting your hand position and lighting.`,
+        coach_summary: alphabetPrediction.coach_summary ?? (
+          isCorrect
+            ? `Correct! The model recognized "${alphabetPrediction.predicted_letter.toUpperCase()}" with ${confidence.toFixed(0)}% confidence.`
+            : `The model saw "${alphabetPrediction.predicted_letter.toUpperCase()}" instead of "${expectedSign.toUpperCase()}". Try adjusting your hand position and lighting.`
+        ),
+        feedback_items: alphabetPrediction.feedback_items ?? [],
         completed_at: new Date().toISOString(),
       });
       if (saved.total_xp != null && saved.streak != null) {
@@ -681,6 +684,9 @@ export default function Exercise() {
                 <Text style={styles.predictionEyebrow}>Model Prediction</Text>
                 <Text style={styles.predictionSign}>{alphabetPrediction.predicted_letter.toUpperCase()}</Text>
                 <Text style={styles.predictionConfidence}>Confidence {alphabetPrediction.confidence.toFixed(0)}%</Text>
+                {alphabetPrediction.coach_summary ? (
+                  <Text style={styles.predictionSummary}>{alphabetPrediction.coach_summary}</Text>
+                ) : null}
                 {alphabetPrediction.top_predictions.length > 1 && (
                   <View style={styles.alternativePredictions}>
                     <Text style={styles.alternativeTitle}>Other guesses</Text>
@@ -692,6 +698,13 @@ export default function Exercise() {
                     ))}
                   </View>
                 )}
+                {alphabetPrediction.feedback_items && alphabetPrediction.feedback_items.length > 0 ? (
+                  <View style={styles.feedbackList}>
+                    {alphabetPrediction.feedback_items.map((item, index) => (
+                      <Text key={`${item}-${index}`} style={styles.predictionFeedbackItem}>• {item}</Text>
+                    ))}
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.resultActions}>
@@ -1102,6 +1115,8 @@ const styles = StyleSheet.create({
   },
   predictionSign: { fontSize: 28, fontWeight: 'bold', color: '#EFEADD' },
   predictionConfidence: { fontSize: 15, color: '#EFEADD' },
+  predictionSummary: { fontSize: 14, lineHeight: 20, color: 'rgba(239,234,221,0.88)', marginTop: 4 },
+  predictionFeedbackItem: { fontSize: 14, color: '#EFEADD', lineHeight: 20 },
   warningCard: {
     backgroundColor: '#F4E2B8',
     borderRadius: 12,
