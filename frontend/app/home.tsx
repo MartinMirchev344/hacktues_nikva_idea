@@ -9,10 +9,52 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Redirect, useRouter } from 'expo-router';
 import { useAuth } from '../context/auth-context';
 import { getLessons, Lesson } from '../lib/auth-api';
 import { palette } from '../constants/colors';
+
+function streakColor(streak: number): string {
+  if (streak <= 0) return '#AAAAAA';
+  // Stops: orange → red → blue → purple
+  const stops = ['#FF6600', '#CC0000', '#0055FF', '#7B00CC'];
+  const total = stops.length - 1;
+  const maxStreak = 30;
+  const t = Math.min(streak / maxStreak, 1) * total;
+  const i = Math.min(Math.floor(t), total - 1);
+  const f = t - i;
+  const hex = (h: string) => [
+    parseInt(h.slice(1, 3), 16),
+    parseInt(h.slice(3, 5), 16),
+    parseInt(h.slice(5, 7), 16),
+  ];
+  const [r1, g1, b1] = hex(stops[i]);
+  const [r2, g2, b2] = hex(stops[i + 1]);
+  const r = Math.round(r1 + (r2 - r1) * f);
+  const g = Math.round(g1 + (g2 - g1) * f);
+  const b = Math.round(b1 + (b2 - b1) * f);
+  return `rgb(${r},${g},${b})`;
+}
+
+function FlameIcon({ streak }: { streak: number }) {
+  const color = streakColor(streak);
+  return (
+    <Svg width={38} height={46} viewBox="0 0 24 30">
+      {/* Outer flame */}
+      <Path
+        d="M12 28 C6 25 2 20 2 14 C2 9 5 5 8 2 C8 6 10 8 12 9 C12 6 14 3 16 1 C18 5 22 9 22 14 C22 20 18 25 12 28 Z"
+        fill={color}
+        opacity={0.9}
+      />
+      {/* Inner highlight */}
+      <Path
+        d="M12 25 C9 22 8 18 9 14 C10 16 11 17 12 17 C13 15 13 12 14 10 C15 13 16 17 15 21 C14 23 13 24 12 25 Z"
+        fill="rgba(255,255,255,0.35)"
+      />
+    </Svg>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -142,8 +184,10 @@ export default function Home() {
           <Text style={styles.xpLabel}>XP</Text>
         </View>
         <View style={styles.streakBubble}>
-          <Text style={styles.streakNumber}>{auth.user.streak}</Text>
-          <Text style={styles.streakLabel}>streak</Text>
+          <FlameIcon streak={auth.user.streak} />
+          <Text style={[styles.streakNumber, { color: streakColor(auth.user.streak) }]}>
+            {auth.user.streak}
+          </Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
@@ -211,9 +255,9 @@ const styles = StyleSheet.create({
   },
   xpBubble: {
     backgroundColor: palette.surface,
-    borderRadius: 24,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
+    borderRadius: 28,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -221,16 +265,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 3,
+    minWidth: 70,
   },
   xpNumber: {
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: 'bold',
     color: palette.text,
   },
   xpLabel: {
-    fontSize: 10,
+    fontSize: 12,
     color: palette.text,
     opacity: 0.75,
+    fontWeight: '600',
   },
   logoutButton: {
     backgroundColor: palette.text,
@@ -261,26 +307,29 @@ const styles = StyleSheet.create({
   },
   streakBubble: {
     backgroundColor: palette.surface,
-    borderRadius: 24,
-    paddingVertical: 6,
+    borderRadius: 28,
+    paddingVertical: 8,
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 3,
+    minWidth: 70,
   },
   streakNumber: {
-    fontSize: 16,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: palette.text,
   },
   streakLabel: {
-    fontSize: 10,
+    fontSize: 12,
     color: palette.text,
     opacity: 0.75,
+    fontWeight: '600',
   },
   list: {
     paddingBottom: 20,
