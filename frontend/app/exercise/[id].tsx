@@ -10,6 +10,7 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
+  Image,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -23,6 +24,9 @@ import {
   verifySign,
   verifySignWeb,
   getMyAttempts,
+  predictAlphabetPhoto,
+  predictAlphabetPhotoWeb,
+  AlphabetPrediction,
   VerifyResult,
 } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
@@ -70,6 +74,10 @@ export default function Exercise() {
   const [quizPhase, setQuizPhase] = useState<QuizPhase>('answering');
   const [quizAnswer, setQuizAnswer] = useState('');
   const [quizCorrect, setQuizCorrect] = useState(false);
+
+  // Alphabet photo mode state
+  const [alphabetPrediction, setAlphabetPrediction] = useState<AlphabetPrediction | null>(null);
+  const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -181,6 +189,88 @@ export default function Exercise() {
   const retryRecording = () => {
     setResult(null);
     setPhase('idle');
+  };
+
+  const takeAlphabetPhoto = async () => {
+    if (Platform.OS === 'web') {
+      const video = webVideoRef.current as HTMLVideoElement | null;
+      if (!video) return;
+      setPhase('uploading');
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d')!.drawImage(video, 0, 0);
+        const blob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9)
+        );
+        const prediction = await predictAlphabetPhotoWeb(blob);
+        setAlphabetPrediction(prediction);
+        setCapturedPhotoUri(canvas.toDataURL('image/jpeg'));
+        setPhase('results');
+        const expectedSign = attempt.exercise?.expected_sign ?? '';
+        playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
+      } catch {
+        setPhase('idle');
+        Alert.alert('Error', 'Failed to process photo. Please try again.');
+      }
+      return;
+    }
+    if (!cameraRef.current) return;
+    setPhase('uploading');
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      if (photo?.uri) {
+        setCapturedPhotoUri(photo.uri);
+        const prediction = await predictAlphabetPhoto(photo.uri);
+        setAlphabetPrediction(prediction);
+        setPhase('results');
+        const expectedSign = attempt.exercise?.expected_sign ?? '';
+        playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
+      } else {
+        setPhase('idle');
+      }
+    } catch (err) {
+      setPhase('idle');
+      setCapturedPhotoUri(null);
+      const msg = err instanceof Error ? err.message : 'Failed to process photo. Please try again.';
+      Alert.alert('Try again', msg);
+    }
+  };
+
+  const retryAlphabetPhoto = () => {
+    setAlphabetPrediction(null);
+    setCapturedPhotoUri(null);
+    setPhase('idle');
+  };
+
+  const handleAlphabetSubmit = async () => {
+    if (!alphabetPrediction) return;
+    const expectedSign = attempt.exercise?.expected_sign ?? '';
+    const isCorrect = alphabetPrediction.predicted_letter === expectedSign;
+    const confidence = alphabetPrediction.confidence;
+    setIsSubmitting(true);
+    try {
+      const saved = await submitAttempt(attempt.id, {
+        status: 'completed',
+        accuracy_score: isCorrect ? confidence : Math.max(confidence * 0.5, 5),
+        speed_score: 100,
+        handshape_score: confidence,
+        detected_sign: alphabetPrediction.predicted_letter,
+        coach_summary: isCorrect
+          ? `Correct! The model recognized "${alphabetPrediction.predicted_letter.toUpperCase()}" with ${confidence.toFixed(0)}% confidence.`
+          : `The model saw "${alphabetPrediction.predicted_letter.toUpperCase()}" instead of "${expectedSign.toUpperCase()}". Try adjusting your hand position and lighting.`,
+        completed_at: new Date().toISOString(),
+      });
+      if (saved.total_xp != null && saved.streak != null) {
+        updateUserStats(saved.total_xp, saved.streak);
+      }
+      await advanceOrExit(isCorrect);
+    } catch {
+      Alert.alert('Error', 'Failed to save results. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -299,6 +389,7 @@ export default function Exercise() {
   }
 
   const isQuiz = attempt.exercise?.exercise_type === 'quiz';
+  const isAlphabetExercise = !isQuiz && (attempt.exercise?.expected_sign ?? '').length === 1;
 
   // Already completed
   if (attempt.status !== 'in_progress') {
@@ -393,6 +484,97 @@ export default function Exercise() {
     );
   }
 
+  // ── Alphabet photo mode ────────────────────────────────────────────────────
+  if (isAlphabetExercise) {
+    const expectedSign = attempt.exercise?.expected_sign ?? '';
+    const isCorrect = alphabetPrediction?.predicted_letter === expectedSign;
+
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+          <ScreenBackButton fallbackHref="/home" />
+          <ExerciseCard attempt={attempt} />
+
+          {phase !== 'results' && (
+            <View style={[styles.cameraWrapper, Platform.OS === 'web' && styles.cameraWrapperWeb]}>
+              {Platform.OS === 'web' ? (
+                // @ts-ignore
+                <video ref={webVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+              )}
+              {phase === 'uploading' && capturedPhotoUri && (
+                <Image source={{ uri: capturedPhotoUri }} style={[styles.camera, { position: 'absolute' }]} resizeMode="cover" />
+              )}
+              {phase === 'uploading' && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="large" color={palette.background} />
+                  <Text style={styles.uploadingText}>Analysing your sign...</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {phase === 'idle' && (
+            <>
+              <TouchableOpacity style={styles.recordBtn} onPress={takeAlphabetPhoto}>
+                <View style={styles.photoBtnInner} />
+              </TouchableOpacity>
+              <Text style={styles.hint}>
+                Hold up the letter "{expectedSign.toUpperCase()}" and tap to take a photo
+              </Text>
+            </>
+          )}
+
+          {phase === 'results' && alphabetPrediction && (
+            <>
+              <View style={[styles.resultBanner, isCorrect ? styles.bannerPass : styles.bannerFail]}>
+                <Text style={styles.resultIcon}>{isCorrect ? '✓' : '✗'}</Text>
+                <View>
+                  <Text style={styles.resultTitle}>{isCorrect ? 'Correct!' : 'Not quite'}</Text>
+                  <Text style={styles.resultSub}>
+                    Detected: {alphabetPrediction.predicted_letter.toUpperCase()} ({alphabetPrediction.confidence.toFixed(0)}%)
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.predictionCard}>
+                <Text style={styles.predictionEyebrow}>Model Prediction</Text>
+                <Text style={styles.predictionSign}>{alphabetPrediction.predicted_letter.toUpperCase()}</Text>
+                <Text style={styles.predictionConfidence}>Confidence {alphabetPrediction.confidence.toFixed(0)}%</Text>
+                {alphabetPrediction.top_predictions.length > 1 && (
+                  <View style={styles.alternativePredictions}>
+                    <Text style={styles.alternativeTitle}>Other guesses</Text>
+                    {alphabetPrediction.top_predictions.slice(1).map((p) => (
+                      <View key={p.letter} style={styles.alternativeRow}>
+                        <Text style={styles.alternativeSign}>{p.letter.toUpperCase()}</Text>
+                        <Text style={styles.alternativeScore}>{p.confidence.toFixed(0)}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.resultActions}>
+                <TouchableOpacity style={styles.retryBtn} onPress={retryAlphabetPhoto}>
+                  <Text style={styles.retryBtnText}>Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.submitBtn, isSubmitting && styles.btnDisabled]}
+                  onPress={handleAlphabetSubmit}
+                  disabled={isSubmitting}
+                >
+                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Save & Continue'}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Normal video mode ──────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
@@ -739,6 +921,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   recordBtnInner: { width: 36, height: 36, borderRadius: 18, backgroundColor: palette.background },
+  photoBtnInner: { width: 36, height: 36, borderRadius: 4, backgroundColor: palette.background },
   stopBtn: {
     alignSelf: 'center',
     width: 72,

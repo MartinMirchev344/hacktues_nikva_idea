@@ -352,6 +352,45 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
   return response.json();
 }
 
+export type AlphabetPrediction = {
+  predicted_letter: string;
+  confidence: number;
+  top_predictions: Array<{ letter: string; confidence: number }>;
+};
+
+async function throwWithDetail(response: Response): Promise<never> {
+  const data = await response.json().catch(() => ({}));
+  throw new Error(data?.detail ?? 'Prediction failed');
+}
+
+export async function predictAlphabetPhoto(imageUri: string): Promise<AlphabetPrediction> {
+  const token = await getToken();
+  const formData = new FormData();
+  formData.append('image', {
+    uri: imageUri,
+    name: 'photo.jpg',
+    type: 'image/jpeg',
+  } as any);
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/recognition/alphabet/predict/`,
+    { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }
+  );
+  if (!response.ok) return throwWithDetail(response);
+  return response.json();
+}
+
+export async function predictAlphabetPhotoWeb(blob: Blob): Promise<AlphabetPrediction> {
+  const token = await getToken();
+  const formData = new FormData();
+  formData.append('image', blob, 'photo.jpg');
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/recognition/alphabet/predict/`,
+    { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }
+  );
+  if (!response.ok) return throwWithDetail(response);
+  return response.json();
+}
+
 export async function verifySignWeb(attemptId: number, blob: Blob): Promise<VerifyResult> {
   const token = await getToken();
   const formData = new FormData();

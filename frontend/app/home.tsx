@@ -334,11 +334,6 @@ const styles = StyleSheet.create({
     opacity: 0.72,
     textTransform: 'uppercase',
   },
-  meta: {
-    fontSize: 14,
-    color: palette.text,
-    marginBottom: 16,
-  },
   streakBubble: {
     backgroundColor: 'rgba(255,255,255,0.6)',
     borderRadius: 28,
@@ -361,31 +356,9 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: 'bold',
   },
-  streakLabel: {
-    fontSize: 12,
-    color: palette.text,
-    opacity: 0.75,
-    fontWeight: '600',
-  },
   list: {
     paddingTop: 8,
     paddingBottom: 28,
-  },
-  lessonTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: palette.text,
-    marginBottom: 6,
-  },
-  lessonDescription: {
-    fontSize: 14,
-    color: palette.text,
-    marginBottom: 8,
-  },
-  lessonMeta: {
-    fontSize: 12,
-    color: palette.text,
-    opacity: 0.75,
   },
   lessonWrapper: {
     marginBottom: 16,
@@ -474,12 +447,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(209,217,223,0.9)',
   },
-  cloudImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: 40,
-  },
   lessonTitleCloud: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -496,33 +463,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 
-  cloudBase: {
-    position: 'absolute',
-    bottom: 8,
-    width: '100%',
-    height: 62,
-    backgroundColor: palette.background,
-    borderRadius: 32,
-  },
-  cloudBump: {
-    position: 'absolute',
-    top: 0,
-    width: 80,
-    height: 80,
-    backgroundColor: palette.background,
-    borderRadius: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  lessonCard: {
-    width: '100%',
-    backgroundColor: 'transparent',
-    padding: 16,
-    zIndex: 1,
-  },
   errorText: {
     color: palette.text,
     textAlign: 'center',
@@ -533,18 +473,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
-  },
-  button: {
-    marginTop: 12,
-    backgroundColor: palette.text,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignSelf: 'center',
-  },
-  buttonText: {
-    color: palette.background,
-    fontSize: 18,
-    fontWeight: 'bold',
   },
 });
