@@ -94,6 +94,7 @@ export default function Exercise() {
   // Alphabet photo mode state
   const [alphabetPrediction, setAlphabetPrediction] = useState<AlphabetPrediction | null>(null);
   const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
+  const [alphabetCaptureNotice, setAlphabetCaptureNotice] = useState<string | null>(null);
   const [isWebCameraReady, setIsWebCameraReady] = useState(Platform.OS !== 'web');
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -266,17 +267,21 @@ export default function Exercise() {
     if (Platform.OS === 'web') {
       const video = webVideoRef.current as HTMLVideoElement | null;
       if (!video) {
+        setAlphabetCaptureNotice('The camera preview is not ready yet. Please wait a moment and try again.');
         Alert.alert('Camera unavailable', 'The camera preview is not ready yet. Please try again.');
         return;
       }
       setPhase('uploading');
       setCapturedPhotoUri(null);
+      setAlphabetCaptureNotice(null);
       try {
         await waitForWebVideoReady(video);
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d')!.drawImage(video, 0, 0);
+        const previewUri = canvas.toDataURL('image/jpeg');
+        setCapturedPhotoUri(previewUri);
         const blob = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob((capturedBlob) => {
             if (capturedBlob) {
@@ -288,13 +293,18 @@ export default function Exercise() {
         });
         const prediction = await predictAlphabetPhotoWeb(blob);
         setAlphabetPrediction(prediction);
-        setCapturedPhotoUri(canvas.toDataURL('image/jpeg'));
+        setAlphabetCaptureNotice(null);
         setPhase('results');
         const expectedSign = attempt.exercise?.expected_sign ?? '';
         playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
       } catch (err) {
         setPhase('idle');
         const message = err instanceof Error ? err.message : 'Failed to process photo. Please try again.';
+        setAlphabetCaptureNotice(
+          isAlphabetDetectionError(message)
+            ? getAlphabetDetectionWarning(message)
+            : message
+        );
         Alert.alert(
           isAlphabetDetectionError(message) ? 'No sign detected' : 'Try again',
           isAlphabetDetectionError(message) ? getAlphabetDetectionWarning(message) : message
@@ -304,12 +314,14 @@ export default function Exercise() {
     }
     if (!cameraRef.current) return;
     setPhase('uploading');
+    setAlphabetCaptureNotice(null);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (photo?.uri) {
         setCapturedPhotoUri(photo.uri);
         const prediction = await predictAlphabetPhoto(photo.uri);
         setAlphabetPrediction(prediction);
+        setAlphabetCaptureNotice(null);
         setPhase('results');
         const expectedSign = attempt.exercise?.expected_sign ?? '';
         playSound(prediction.predicted_letter === expectedSign ? 'correct' : 'fail');
@@ -318,8 +330,12 @@ export default function Exercise() {
       }
     } catch (err) {
       setPhase('idle');
-      setCapturedPhotoUri(null);
       const msg = err instanceof Error ? err.message : 'Failed to process photo. Please try again.';
+      setAlphabetCaptureNotice(
+        isAlphabetDetectionError(msg)
+          ? getAlphabetDetectionWarning(msg)
+          : msg
+      );
       Alert.alert(
         isAlphabetDetectionError(msg) ? 'No sign detected' : 'Try again',
         isAlphabetDetectionError(msg) ? getAlphabetDetectionWarning(msg) : msg
@@ -330,6 +346,7 @@ export default function Exercise() {
   const retryAlphabetPhoto = () => {
     setAlphabetPrediction(null);
     setCapturedPhotoUri(null);
+    setAlphabetCaptureNotice(null);
     setPhase('idle');
   };
 
@@ -636,6 +653,15 @@ export default function Exercise() {
                   the lighting was too weak, or the handshape was unclear.
                 </Text>
               </View>
+              {alphabetCaptureNotice && (
+                <View style={styles.captureNoticeCard}>
+                  <Text style={styles.captureNoticeTitle}>Last capture</Text>
+                  {capturedPhotoUri ? (
+                    <Image source={{ uri: capturedPhotoUri }} style={styles.captureNoticePreview} resizeMode="cover" />
+                  ) : null}
+                  <Text style={styles.captureNoticeText}>{alphabetCaptureNotice}</Text>
+                </View>
+              )}
             </>
           )}
 
@@ -1093,6 +1119,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#5A4020',
+  },
+  captureNoticeCard: {
+    backgroundColor: '#E7EEF6',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  captureNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: '#2E4057',
+  },
+  captureNoticePreview: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 10,
+    backgroundColor: '#C9D4E1',
+  },
+  captureNoticeText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#2E4057',
   },
   alternativePredictions: {
     marginTop: 10,

@@ -1,5 +1,7 @@
 import io
+import os
 from pathlib import Path
+from urllib.request import urlretrieve
 
 import numpy as np
 from django.conf import settings
@@ -10,12 +12,40 @@ from rest_framework.views import APIView
 from .serializers import RecognitionHealthSerializer
 from .services import get_recognition_service
 
-HAND_LANDMARK_MODEL = Path(settings.BASE_DIR).parent / 'data' / 'models' / 'hand_landmarker.task'
+DEFAULT_MEDIAPIPE_TASK_URL = (
+    "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/"
+    "holistic_landmarker/float16/latest/holistic_landmarker.task"
+)
+
+
+def get_holistic_task_path() -> Path:
+    cache_dir = Path(
+        os.getenv(
+            "RECOGNITION_CACHE_DIR",
+            Path(settings.BASE_DIR).parent / "model_cache",
+        )
+    )
+    task_path = Path(
+        os.getenv(
+            "MEDIAPIPE_HOLISTIC_TASK_PATH",
+            cache_dir / "mediapipe" / "holistic_landmarker.task",
+        )
+    )
+
+    if task_path.exists():
+        return task_path
+
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    urlretrieve(
+        os.getenv("MEDIAPIPE_HOLISTIC_TASK_URL", DEFAULT_MEDIAPIPE_TASK_URL),
+        task_path,
+    )
+    return task_path
 
 
 def detect_hand_landmarks(pil_image):
     """
-    Detect 21 hand landmarks using MediaPipe Tasks API.
+    Detect 21 hand landmarks using MediaPipe Holistic Tasks API.
     Returns list of NormalizedLandmark, or None if no hand found.
     """
     import mediapipe as mp
@@ -24,26 +54,27 @@ def detect_hand_landmarks(pil_image):
 
     img_np = np.array(pil_image)
 
-    options = mp_vision.HandLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=str(HAND_LANDMARK_MODEL)),
-        num_hands=1,
-        min_hand_detection_confidence=0.3,
-        min_hand_presence_confidence=0.3,
-        min_tracking_confidence=0.3,
+    options = mp_vision.HolisticLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=str(get_holistic_task_path())),
+        running_mode=mp_vision.RunningMode.IMAGE,
+        output_face_blendshapes=False,
+        output_segmentation_mask=False,
     )
-    with mp_vision.HandLandmarker.create_from_options(options) as detector:
+    with mp_vision.HolisticLandmarker.create_from_options(options) as detector:
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
         result = detector.detect(mp_img)
 
-    if result.hand_landmarks:
-        return result.hand_landmarks[0]
+    if getattr(result, "left_hand_landmarks", None):
+        return result.left_hand_landmarks
+    if getattr(result, "right_hand_landmarks", None):
+        return result.right_hand_landmarks
     return None
 
 
 def classify_asl_landmarks(landmarks):
     """
     Rule-based ASL letter classifier from 21 hand landmarks.
-    Works for the letters: A B D F J K M R T W
+    Works for the letters: A B D F J K M R T V W
     Returns (letter, confidence_float).
     """
     lm = np.array([[l.x, l.y, l.z] for l in landmarks])  # (21, 3)
@@ -78,6 +109,9 @@ def classify_asl_landmarks(landmarks):
     thumb_index_touch   = dist(4, 8)  < 0.40
     # T: thumb tucked between index and middle at MCP level (near index MCP)
     thumb_near_index_mcp = dist(4, 5) < 0.40
+    index_middle_tip_gap = dist(8, 12)
+    index_middle_base_gap = dist(5, 9)
+    index_middle_spread_ratio = index_middle_tip_gap / max(index_middle_base_gap, 1e-6)
 
     # ── Pattern matching ──────────────────────────────────────────────────────
     # B: all four fingers up, thumb folded
@@ -92,9 +126,13 @@ def classify_asl_landmarks(landmarks):
     if index_up and middle_up and not ring_up and not pinky_up and thumb_sideways:
         return 'k', 78.0
 
-    # R: index + middle up (crossed), thumb in
+    # V / R: same raised fingers, separated by fingertip spread
     if index_up and middle_up and not ring_up and not pinky_up:
-        return 'r', 74.0
+        if index_middle_spread_ratio > 1.35:
+            return 'v', 76.0
+        if index_middle_spread_ratio < 0.85:
+            return 'r', 74.0
+        return None, 0.0
 
     # D: only index finger up
     if index_up and not middle_up and not ring_up and not pinky_up:
