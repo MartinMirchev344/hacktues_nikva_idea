@@ -143,6 +143,30 @@ Recognition-related settings supported by the backend include:
 
 If these are not set, the backend falls back to defaults defined in [settings.py](/c:/Users/marti/OneDrive/Documents/GitHub/hacktues_nikva_idea/backend/mimical/mimical/settings.py) and [services.py](/c:/Users/marti/OneDrive/Documents/GitHub/hacktues_nikva_idea/backend/mimical/recognition/services.py).
 
+Email-related settings for login OTP and password reset codes:
+
+- `EMAIL_BACKEND`
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_USE_TLS`
+- `EMAIL_HOST_USER`
+- `EMAIL_HOST_PASSWORD`
+- `DEFAULT_FROM_EMAIL`
+
+Example `backend/mimical/.env` for real SMTP delivery:
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=Mimical <your-email@gmail.com>
+```
+
+Important: if `EMAIL_BACKEND` is not set, the backend uses Django's console email backend, which prints OTP codes in the server terminal instead of sending them to the user's inbox.
+
 ## API Overview
 
 Main API routes are:

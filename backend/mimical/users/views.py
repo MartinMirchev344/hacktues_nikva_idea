@@ -41,6 +41,7 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
 
         otp = OTPCode.generate_for(user.email, OTPCode.Purpose.LOGIN)
+        print(f"[LOGIN OTP] Sending code {otp.code} to {user.email}")
         send_mail(
             subject='Your Mimical login code',
             message=f'Your verification code is: {otp.code}\n\nThis code expires in 10 minutes.',
