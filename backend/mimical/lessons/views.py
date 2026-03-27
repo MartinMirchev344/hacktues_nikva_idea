@@ -187,16 +187,8 @@ class VerifySignView(APIView):
         if not video:
             return Response({"detail": "No video provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-<<<<<<< Updated upstream:backend/UNSPOKEN/lessons/views.py
         try:
             result = verify_sign(video, attempt.exercise.expected_sign, lesson_id=attempt.exercise.lesson_id)
         except Exception as exc:
             return Response({"detail": f"Recognition failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-=======
-        result = verify_sign(
-            video,
-            attempt.exercise.expected_sign,
-            lesson_ids=[attempt.exercise.lesson_id],
-        )
->>>>>>> Stashed changes:backend/mimical/lessons/views.py
         return Response(result, status=status.HTTP_200_OK)

@@ -4,20 +4,12 @@ import tempfile
 from recognition.services import get_recognition_service, normalize_label
 
 
-<<<<<<< Updated upstream:backend/UNSPOKEN/lessons/sign_verifier.py
 def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) -> dict:
-=======
-def verify_sign(video_file, expected_sign: str, lesson_ids: list[int] | None = None) -> dict:
->>>>>>> Stashed changes:backend/mimical/lessons/sign_verifier.py
     frames = extract_video_frames(video_file)
     lesson_ids = [lesson_id] if lesson_id is not None else list(range(1, 20))
     prediction = get_recognition_service().predict_frames(
         frames=frames,
-<<<<<<< Updated upstream:backend/UNSPOKEN/lessons/sign_verifier.py
         lesson_ids=lesson_ids,
-=======
-        lesson_ids=lesson_ids or [1, 2, 5],
->>>>>>> Stashed changes:backend/mimical/lessons/sign_verifier.py
         top_k=3,
         include_tracking=True,
     )

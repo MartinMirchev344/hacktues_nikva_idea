@@ -33,7 +33,6 @@ SUPPORTED_SIGN_ALIASES = {
     "brother": ["brother"],
     "sister": ["sister"],
     "friend": ["friend"],
-<<<<<<< Updated upstream:backend/UNSPOKEN/recognition/services.py
     # Numbers 1-10
     "one": ["one"],
     "two": ["two"],
@@ -75,12 +74,6 @@ SUPPORTED_SIGN_ALIASES = {
     "stop": ["stop"],
     "wait": ["wait"],
     "understand": ["understand"],
-=======
-    **{
-        letter: [letter, f"letter {letter}", f"asl {letter}"]
-        for letter in "abcdefghijklmnopqrstuvwxyz"
-    },
->>>>>>> Stashed changes:backend/mimical/recognition/services.py
 }
 POSE_INDICES = (0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 KEYPOINT_COUNT = 55
