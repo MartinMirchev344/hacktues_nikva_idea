@@ -84,6 +84,21 @@ type AuthPayload = {
   confirmPassword?: string;
 };
 
+function getFirstErrorMessage(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const firstString = value.find(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0
+    );
+    return firstString ?? null;
+  }
+
+  return null;
+}
+
 async function request<T>(path: string, body: Record<string, string>) {
   const response = await fetchWithNetworkHint(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -96,10 +111,12 @@ async function request<T>(path: string, body: Record<string, string>) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message =
-      data?.username?.[0] ??
-      data?.email?.[0] ??
-      data?.password?.[0] ??
-      data?.detail ??
+      getFirstErrorMessage(data?.username) ??
+      getFirstErrorMessage(data?.email) ??
+      getFirstErrorMessage(data?.password) ??
+      getFirstErrorMessage(data?.password2) ??
+      getFirstErrorMessage(data?.non_field_errors) ??
+      getFirstErrorMessage(data?.detail) ??
       'Something went wrong. Please try again.';
     throw new Error(message);
   }

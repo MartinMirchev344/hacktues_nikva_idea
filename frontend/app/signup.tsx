@@ -25,14 +25,17 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (params.mode === 'signup') {
       setIsLogin(false);
+      setErrorMessage('');
       return;
     }
     if (params.mode === 'login') {
       setIsLogin(true);
+      setErrorMessage('');
     }
   }, [params.mode]);
 
@@ -49,22 +52,27 @@ export default function Auth() {
   }
 
   const handleAuth = async () => {
-    if (!email || !password || (!isLogin && !username.trim())) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (
+      !email.trim() ||
+      !password ||
+      (!isLogin && (!username.trim() || !confirmPassword))
+    ) {
+      setErrorMessage('Please fill in all fields.');
       return;
     }
     if (!isLogin && password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      setErrorMessage('Passwords do not match.');
       return;
     }
 
     try {
       setIsSubmitting(true);
+      setErrorMessage('');
       const authResponse = isLogin
-        ? await login({ email, password })
+        ? await login({ email: email.trim(), password })
         : await register({
             username: username.trim(),
-            email,
+            email: email.trim(),
             password,
             confirmPassword,
           });
@@ -74,7 +82,7 @@ export default function Auth() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unable to authenticate right now.';
-      Alert.alert('Error', message);
+      setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -89,13 +97,19 @@ export default function Auth() {
         <View style={styles.tabContainer}>
           <TouchableOpacity 
             style={[styles.tab, isLogin && styles.activeTab]} 
-            onPress={() => setIsLogin(true)}
+            onPress={() => {
+              setIsLogin(true);
+              setErrorMessage('');
+            }}
           >
             <Text style={[styles.tabText, isLogin && styles.activeTabText]}>Log In</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.tab, !isLogin && styles.activeTab]} 
-            onPress={() => setIsLogin(false)}
+            onPress={() => {
+              setIsLogin(false);
+              setErrorMessage('');
+            }}
           >
             <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Sign Up</Text>
           </TouchableOpacity>
@@ -107,7 +121,12 @@ export default function Auth() {
             placeholder="Username"
             placeholderTextColor={palette.text}
             value={username}
-            onChangeText={setUsername}
+            onChangeText={(value) => {
+              setUsername(value);
+              if (errorMessage) {
+                setErrorMessage('');
+              }
+            }}
             autoCapitalize="none"
           />
         )}
@@ -116,7 +135,12 @@ export default function Auth() {
           placeholder="Email"
           placeholderTextColor={palette.text}
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(value) => {
+            setEmail(value);
+            if (errorMessage) {
+              setErrorMessage('');
+            }
+          }}
           keyboardType="email-address"
           autoCapitalize="none"
         />
@@ -125,7 +149,12 @@ export default function Auth() {
           placeholder="Password"
           placeholderTextColor={palette.text}
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(value) => {
+            setPassword(value);
+            if (errorMessage) {
+              setErrorMessage('');
+            }
+          }}
           secureTextEntry
         />
         {!isLogin && (
@@ -134,10 +163,17 @@ export default function Auth() {
             placeholder="Confirm Password"
             placeholderTextColor={palette.text}
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={(value) => {
+              setConfirmPassword(value);
+              if (errorMessage) {
+                setErrorMessage('');
+              }
+            }}
             secureTextEntry
           />
         )}
+
+        {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
         <TouchableOpacity
           style={[styles.button, isSubmitting && styles.buttonDisabled]}
@@ -227,6 +263,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 16,
     color: palette.text,
+  },
+  errorText: {
+    color: '#B00020',
+    fontSize: 14,
+    marginBottom: 8,
+    marginTop: -4,
+    textAlign: 'center',
   },
   button: {
     backgroundColor: palette.text,
