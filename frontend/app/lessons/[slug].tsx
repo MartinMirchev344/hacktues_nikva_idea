@@ -15,6 +15,41 @@ import { getLesson, createAttempt, getMyAttempts, Lesson, Exercise } from '../..
 import { palette } from '../../constants/colors';
 import { ScreenBackButton } from '../../components/screen-back-button';
 
+function shuffleExercises(exercises: Exercise[]) {
+  const shuffled = [...exercises];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function buildMixedExerciseOrder(exercises: Exercise[]) {
+  const ordered = [...exercises].sort((a, b) => a.order - b.order);
+  const practiceExercises = ordered.filter((exercise) => exercise.exercise_type !== 'quiz');
+  const quizExercises = shuffleExercises(
+    ordered.filter((exercise) => exercise.exercise_type === 'quiz')
+  );
+
+  if (practiceExercises.length > 0 && quizExercises.length > 1) {
+    const lastPracticeSign = practiceExercises[practiceExercises.length - 1].expected_sign;
+
+    if (quizExercises[0].expected_sign === lastPracticeSign) {
+      const swapIndex = quizExercises.findIndex(
+        (exercise, index) => index > 0 && exercise.expected_sign !== lastPracticeSign
+      );
+
+      if (swapIndex !== -1) {
+        [quizExercises[0], quizExercises[swapIndex]] = [quizExercises[swapIndex], quizExercises[0]];
+      }
+    }
+  }
+
+  return [...practiceExercises, ...quizExercises];
+}
+
 export default function LessonDetail() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -34,7 +69,7 @@ export default function LessonDetail() {
           setLoading(true);
           const [lesson, attempts] = await Promise.all([getLesson(slug), getMyAttempts()]);
           setLesson(lesson);
-          const exs = lesson.exercises || [];
+          const exs = buildMixedExerciseOrder(lesson.exercises || []);
           setExercises(exs);
           const exerciseIds = new Set(exs.map(e => e.id));
           const completed = new Set(
@@ -72,10 +107,9 @@ export default function LessonDetail() {
 
   const handleStartLesson = async () => {
     if (!auth || exercises.length === 0) return;
-    const ordered = [...exercises].sort((a, b) => a.order - b.order);
     try {
-      const attempt = await createAttempt(ordered[0].id);
-      const queue = JSON.stringify(ordered.map(e => e.id));
+      const attempt = await createAttempt(exercises[0].id);
+      const queue = JSON.stringify(exercises.map(e => e.id));
       router.push({ pathname: `/exercise/${attempt.id}`, params: { exerciseQueue: queue, queueIndex: '0' } });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start lesson');
@@ -157,6 +191,7 @@ export default function LessonDetail() {
           <Text style={styles.difficulty}>{lesson.difficulty}</Text>
           <Text style={styles.duration}>{lesson.estimated_duration_minutes} minutes</Text>
         </View>
+        <Text style={styles.challengeNote}>Practice comes first, then the guessing exercises are mixed up.</Text>
         <TouchableOpacity style={styles.startLessonButton} onPress={handleStartLesson}>
           <Text style={styles.startLessonText}>Start Lesson</Text>
         </TouchableOpacity>
@@ -230,6 +265,12 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 14,
     color: palette.text,
+  },
+  challengeNote: {
+    fontSize: 13,
+    color: palette.text,
+    opacity: 0.75,
+    marginTop: 10,
   },
   startLessonButton: {
     backgroundColor: palette.text,
