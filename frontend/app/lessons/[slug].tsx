@@ -109,7 +109,7 @@ export default function LessonDetail() {
     if (!auth || exercises.length === 0) return;
     try {
       const attempt = await createAttempt(exercises[0].id);
-      const queue = JSON.stringify(exercises.map(e => e.id));
+      const queue = exercises.map((exercise) => exercise.id).join(',');
       router.push({ pathname: `/exercise/${attempt.id}`, params: { exerciseQueue: queue, queueIndex: '0' } });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start lesson');

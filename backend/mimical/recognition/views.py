@@ -257,7 +257,9 @@ def analyze_asl_landmarks(landmarks):
             finger_extension_scores["middle"],
             finger_fold_scores["ring"],
             finger_fold_scores["pinky"],
-            _score_le(thumb_middle_mcp, 0.42, 0.16),
+            _score_ge(thumb_middle_mcp, 0.28, 0.06),
+            _score_ge(thumb_lateral, 0.10, 0.03),
+            _score_ge(thumb_ring_tip, 0.72, 0.18),
             _score_ge(index_middle_spread, 1.05, 0.28),
             1.0 - _score_le(thumb_index_touch, 0.30, 0.12),
         ),
@@ -291,15 +293,17 @@ def analyze_asl_landmarks(landmarks):
             finger_extension_scores["middle"],
             finger_fold_scores["ring"],
             finger_fold_scores["pinky"],
-            _score_ge(index_middle_spread, 1.28, 0.32),
-            1.0 - _score_le(thumb_middle_mcp, 0.36, 0.16),
+            _score_ge(index_middle_spread, 1.26, 0.22),
+            _score_le(thumb_ring_tip, 0.68, 0.18),
             0.0 if crossed_index_middle else 1.0,
         ),
         "w": _average(
             finger_extension_scores["index"],
             finger_extension_scores["middle"],
             finger_extension_scores["ring"],
+            1.0 - finger_fold_scores["ring"],
             finger_fold_scores["pinky"],
+            1.0 - finger_extension_scores["pinky"],
             _score_ge(index_middle_spread, 1.08, 0.28),
             _score_ge(middle_ring_spread, 1.08, 0.28),
         ),
@@ -319,7 +323,7 @@ def analyze_asl_landmarks(landmarks):
     confidence_gap = top_candidate["confidence"] - runner_up["confidence"]
     predicted_letter = top_candidate["letter"]
 
-    if top_confidence < 48.0 or confidence_gap < 6.0:
+    if top_confidence < 48.0 or confidence_gap < 7.0:
         predicted_letter = None
         top_confidence = 0.0
 

@@ -35,6 +35,45 @@ import { getVidref } from '../../lib/signasl-map';
 type Phase = 'idle' | 'recording' | 'uploading' | 'results';
 type QuizPhase = 'answering' | 'results';
 
+function getRouteParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+}
+
+function parseExerciseQueue(value: string | string[] | undefined) {
+  const rawValue = getRouteParam(value);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item));
+    }
+  } catch {}
+
+  return rawValue
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item));
+}
+
+function parseQueueIndex(value: string | string[] | undefined) {
+  const rawValue = getRouteParam(value);
+  if (!rawValue) {
+    return -1;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isInteger(parsed) ? parsed : -1;
+}
+
 function normalizeSignText(value: string | null | undefined) {
   return (value ?? '')
     .trim()
@@ -50,6 +89,24 @@ function formatSignText(value: string | null | undefined) {
   }
 
   return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function toNumericValue(value: unknown) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function formatPercent(value: unknown, digits = 0) {
+  const numericValue = toNumericValue(value);
+  return `${(numericValue ?? 0).toFixed(digits)}%`;
 }
 
 function isAlphabetDetectionError(message: string) {
@@ -70,11 +127,12 @@ function getAlphabetDetectionWarning(message: string) {
 
 export default function Exercise() {
   const router = useRouter();
-  const { id, isLastExercise, exerciseQueue, queueIndex } = useLocalSearchParams<{
+  const { id, isLastExercise, exerciseQueue, queueIndex, failedQueue } = useLocalSearchParams<{
     id: string;
     isLastExercise?: string;
     exerciseQueue?: string;
     queueIndex?: string;
+    failedQueue?: string;
   }>();
   const { auth, isHydrating, updateUserStats } = useAuth();
 
@@ -401,27 +459,52 @@ export default function Exercise() {
   };
 
   const advanceOrExit = async (isCorrect: boolean) => {
-    const queue: number[] = exerciseQueue ? JSON.parse(exerciseQueue) : [];
-    const idx = queueIndex ? parseInt(queueIndex) : -1;
+    const queue = parseExerciseQueue(exerciseQueue);
+    const idx = parseQueueIndex(queueIndex);
 
-    if (queue.length > 0) {
-      // Check if all exercises in the lesson are now completed
-      const attempts = await getMyAttempts();
-      const completedIds = new Set(
-        attempts.filter(a => a.status === 'completed').map(a => a.exercise.id)
-      );
-      const allDone = queue.every(exId => completedIds.has(exId));
-      if (allDone) await playSound('lesson_complete');
+    if (queue.length === 0 || idx < 0) {
+      router.back();
+      return;
     }
 
-    if (queue.length > 0 && idx >= 0 && idx < queue.length - 1) {
+    // Accumulate failed exercise IDs across the queue pass
+    const currentFailed = parseExerciseQueue(failedQueue);
+    const currentExerciseId = queue[idx];
+    const updatedFailed = isCorrect
+      ? currentFailed
+      : currentFailed.includes(currentExerciseId)
+        ? currentFailed
+        : [...currentFailed, currentExerciseId];
+
+    const isLastInQueue = idx >= queue.length - 1;
+
+    if (!isLastInQueue) {
+      // Advance to next exercise
       const nextExerciseId = queue[idx + 1];
       const nextAttempt = await createAttempt(nextExerciseId);
       router.replace({
         pathname: `/exercise/${nextAttempt.id}`,
-        params: { exerciseQueue, queueIndex: String(idx + 1) },
+        params: {
+          exerciseQueue,
+          queueIndex: String(idx + 1),
+          failedQueue: updatedFailed.join(','),
+        },
+      });
+    } else if (updatedFailed.length > 0) {
+      // End of queue but there were failures — re-run failed exercises
+      const firstFailedId = updatedFailed[0];
+      const retryAttempt = await createAttempt(firstFailedId);
+      router.replace({
+        pathname: `/exercise/${retryAttempt.id}`,
+        params: {
+          exerciseQueue: updatedFailed.join(','),
+          queueIndex: '0',
+          failedQueue: '',
+        },
       });
     } else {
+      // All done, no failures
+      await playSound('lesson_complete');
       router.back();
     }
   };
@@ -576,7 +659,7 @@ export default function Exercise() {
                   onPress={handleQuizSave}
                   disabled={isSubmitting}
                 >
-                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Save & Continue'}</Text>
+                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Continue'}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -611,7 +694,7 @@ export default function Exercise() {
                   onLoadedMetadata={() => setIsWebCameraReady(true)}
                   onCanPlay={() => setIsWebCameraReady(true)}
                   onPlaying={() => setIsWebCameraReady(true)}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                 />
               ) : (
                 <CameraView ref={cameraRef} style={styles.camera} facing="front" />
@@ -639,19 +722,9 @@ export default function Exercise() {
                   ? 'Camera is warming up...'
                   : `Hold up the letter "${expectedSign.toUpperCase()}" and tap to take a photo`}
               </Text>
-              <View style={styles.warningCard}>
-                <Text style={styles.warningTitle}>Warning</Text>
-                <Text style={styles.warningText}>
-                  If no sign is detected, the photo was still taken. It usually means your hand was out of frame,
-                  the lighting was too weak, or the handshape was unclear.
-                </Text>
-              </View>
-              {alphabetCaptureNotice && (
-                <View style={styles.captureNoticeCard}>
-                  <Text style={styles.captureNoticeTitle}>Last analysis</Text>
-                  <Text style={styles.captureNoticeText}>{alphabetCaptureNotice}</Text>
-                </View>
-              )}
+              {alphabetCaptureNotice ? (
+                <Text style={styles.alphabetCaptureNotice}>{alphabetCaptureNotice}</Text>
+              ) : null}
             </>
           )}
 
@@ -662,7 +735,7 @@ export default function Exercise() {
                 <View>
                   <Text style={styles.resultTitle}>{isCorrect ? 'Correct!' : 'Not quite'}</Text>
                   <Text style={styles.resultSub}>
-                    Detected: {alphabetPrediction.predicted_letter.toUpperCase()} ({alphabetPrediction.confidence.toFixed(0)}%)
+                    Detected: {alphabetPrediction.predicted_letter.toUpperCase()} ({formatPercent(alphabetPrediction.confidence)})
                   </Text>
                 </View>
               </View>
@@ -670,7 +743,7 @@ export default function Exercise() {
               <View style={styles.predictionCard}>
                 <Text style={styles.predictionEyebrow}>Model Prediction</Text>
                 <Text style={styles.predictionSign}>{alphabetPrediction.predicted_letter.toUpperCase()}</Text>
-                <Text style={styles.predictionConfidence}>Confidence {alphabetPrediction.confidence.toFixed(0)}%</Text>
+                <Text style={styles.predictionConfidence}>Confidence {formatPercent(alphabetPrediction.confidence)}</Text>
                 {alphabetPrediction.coach_summary ? (
                   <Text style={styles.predictionSummary}>{alphabetPrediction.coach_summary}</Text>
                 ) : null}
@@ -680,7 +753,7 @@ export default function Exercise() {
                     {alphabetPrediction.top_predictions.slice(1).map((p) => (
                       <View key={p.letter} style={styles.alternativeRow}>
                         <Text style={styles.alternativeSign}>{p.letter.toUpperCase()}</Text>
-                        <Text style={styles.alternativeScore}>{p.confidence.toFixed(0)}%</Text>
+                        <Text style={styles.alternativeScore}>{formatPercent(p.confidence)}</Text>
                       </View>
                     ))}
                   </View>
@@ -703,7 +776,7 @@ export default function Exercise() {
                   onPress={handleAlphabetSubmit}
                   disabled={isSubmitting}
                 >
-                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Save & Continue'}</Text>
+                  <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Continue'}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -731,7 +804,7 @@ export default function Exercise() {
                 autoPlay
                 muted
                 playsInline
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
               />
             ) : (
               <CameraView ref={cameraRef} style={styles.camera} facing="front" mode="video" />
@@ -787,7 +860,7 @@ export default function Exercise() {
                 {result.detected_sign ? (
                   <Text style={styles.resultSub}>
                     Detected: {result.detected_sign}
-                    {result.confidence > 0 ? ` (${result.confidence.toFixed(0)}%)` : ''}
+                    {(toNumericValue(result.confidence) ?? 0) > 0 ? ` (${formatPercent(result.confidence)})` : ''}
                   </Text>
                 ) : null}
               </View>
@@ -799,7 +872,10 @@ export default function Exercise() {
               accuracy_score: result.accuracy_score,
               speed_score: result.speed_score,
               handshape_score: result.handshape_score,
-              score: (result.accuracy_score + result.speed_score + result.handshape_score) / 3,
+              score:
+                ((toNumericValue(result.accuracy_score) ?? 0) +
+                  (toNumericValue(result.speed_score) ?? 0) +
+                  (toNumericValue(result.handshape_score) ?? 0)) / 3,
             }} />
 
             {result.coach_summary ? (
@@ -825,9 +901,7 @@ export default function Exercise() {
                 onPress={handleSubmit}
                 disabled={isSubmitting}
               >
-                <Text style={styles.btnText}>
-                  {isSubmitting ? 'Saving...' : 'Save & Continue'}
-                </Text>
+                <Text style={styles.btnText}>{isSubmitting ? 'Saving...' : 'Continue'}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -919,7 +993,7 @@ function PredictionCard({ result }: { result: VerifyResult }) {
         {result.detected_sign || 'No sign detected'}
       </Text>
       <Text style={styles.predictionConfidence}>
-        Confidence {result.confidence.toFixed(0)}%
+        Confidence {formatPercent(result.confidence)}
       </Text>
 
       {alternatives.length > 0 ? (
@@ -931,7 +1005,7 @@ function PredictionCard({ result }: { result: VerifyResult }) {
               style={styles.alternativeRow}
             >
               <Text style={styles.alternativeSign}>{candidate.sign}</Text>
-              <Text style={styles.alternativeScore}>{candidate.score.toFixed(0)}%</Text>
+              <Text style={styles.alternativeScore}>{formatPercent(candidate.score)}</Text>
             </View>
           ))}
         </View>
@@ -960,12 +1034,12 @@ function ScoresCard({ attempt }: { attempt: any }) {
   );
 }
 
-function ScoreRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
+function ScoreRow({ label, value, bold }: { label: string; value: unknown; bold?: boolean }) {
   return (
     <View style={styles.scoreRow}>
       <Text style={[styles.scoreLabel, bold && styles.scoreLabelBold]}>{label}</Text>
       <Text style={[styles.scoreValue, bold && styles.scoreValueBold]}>
-        {value.toFixed(1)}%
+        {formatPercent(value, 1)}
       </Text>
     </View>
   );
@@ -1104,41 +1178,12 @@ const styles = StyleSheet.create({
   predictionConfidence: { fontSize: 15, color: '#EFEADD' },
   predictionSummary: { fontSize: 14, lineHeight: 20, color: 'rgba(239,234,221,0.88)', marginTop: 4 },
   predictionFeedbackItem: { fontSize: 14, color: '#EFEADD', lineHeight: 20 },
-  warningCard: {
-    backgroundColor: '#F4E2B8',
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
-  },
-  warningTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    color: '#5A4020',
-  },
-  warningText: {
+  alphabetCaptureNotice: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#5A4020',
-  },
-  captureNoticeCard: {
-    backgroundColor: '#E7EEF6',
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  captureNoticeTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    color: '#2E4057',
-  },
-  captureNoticeText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#2E4057',
+    color: '#B9472D',
+    textAlign: 'center',
+    marginTop: 8,
   },
   alternativePredictions: {
     marginTop: 10,
