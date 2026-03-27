@@ -91,7 +91,7 @@ export default function Auth() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.formContainer}>
-        <Text style={styles.title}>Unspoken</Text>
+        <Text style={styles.title}>Mimical</Text>
         <Text style={styles.subtitle}>{isLogin ? 'Welcome Back' : 'Create Account'}</Text>
         
         <View style={styles.tabContainer}>

@@ -11,7 +11,7 @@ import type { AuthResponse } from '../lib/auth-api';
 import { setAuthToken, clearAuthToken } from '../lib/auth-api';
 
 type AuthState = AuthResponse | null;
-const AUTH_STORAGE_KEY = 'unspoken.auth';
+const AUTH_STORAGE_KEY = 'mimical.auth';
 
 type AuthContextValue = {
   auth: AuthState;
