@@ -10,7 +10,6 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
-  Image,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -93,7 +92,6 @@ export default function Exercise() {
 
   // Alphabet photo mode state
   const [alphabetPrediction, setAlphabetPrediction] = useState<AlphabetPrediction | null>(null);
-  const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
   const [alphabetCaptureNotice, setAlphabetCaptureNotice] = useState<string | null>(null);
   const [isWebCameraReady, setIsWebCameraReady] = useState(Platform.OS !== 'web');
 
@@ -272,7 +270,6 @@ export default function Exercise() {
         return;
       }
       setPhase('uploading');
-      setCapturedPhotoUri(null);
       setAlphabetCaptureNotice(null);
       try {
         await waitForWebVideoReady(video);
@@ -281,8 +278,6 @@ export default function Exercise() {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d')!.drawImage(video, 0, 0);
-        const previewUri = canvas.toDataURL('image/jpeg');
-        setCapturedPhotoUri(previewUri);
         const blob = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob((capturedBlob) => {
             if (capturedBlob) {
@@ -319,7 +314,6 @@ export default function Exercise() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (photo?.uri) {
         const expectedSign = attempt.exercise?.expected_sign ?? '';
-        setCapturedPhotoUri(photo.uri);
         const prediction = await predictAlphabetPhoto(photo.uri, expectedSign);
         setAlphabetPrediction(prediction);
         setAlphabetCaptureNotice(null);
@@ -345,7 +339,6 @@ export default function Exercise() {
 
   const retryAlphabetPhoto = () => {
     setAlphabetPrediction(null);
-    setCapturedPhotoUri(null);
     setAlphabetCaptureNotice(null);
     setPhase('idle');
   };
@@ -623,9 +616,6 @@ export default function Exercise() {
               ) : (
                 <CameraView ref={cameraRef} style={styles.camera} facing="front" />
               )}
-              {phase === 'uploading' && capturedPhotoUri && (
-                <Image source={{ uri: capturedPhotoUri }} style={[styles.camera, { position: 'absolute' }]} resizeMode="cover" />
-              )}
               {phase === 'uploading' && (
                 <View style={styles.uploadingOverlay}>
                   <ActivityIndicator size="large" color={palette.background} />
@@ -658,10 +648,7 @@ export default function Exercise() {
               </View>
               {alphabetCaptureNotice && (
                 <View style={styles.captureNoticeCard}>
-                  <Text style={styles.captureNoticeTitle}>Last capture</Text>
-                  {capturedPhotoUri ? (
-                    <Image source={{ uri: capturedPhotoUri }} style={styles.captureNoticePreview} resizeMode="cover" />
-                  ) : null}
+                  <Text style={styles.captureNoticeTitle}>Last analysis</Text>
                   <Text style={styles.captureNoticeText}>{alphabetCaptureNotice}</Text>
                 </View>
               )}
@@ -1147,12 +1134,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
     color: '#2E4057',
-  },
-  captureNoticePreview: {
-    width: '100%',
-    aspectRatio: 3 / 4,
-    borderRadius: 10,
-    backgroundColor: '#C9D4E1',
   },
   captureNoticeText: {
     fontSize: 14,
