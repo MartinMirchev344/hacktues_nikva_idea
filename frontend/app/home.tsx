@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Redirect, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/auth-context';
 import { getLessons, Lesson } from '../lib/auth-api';
 import { palette } from '../constants/colors';
@@ -178,21 +179,23 @@ export default function Home() {
         <View key={`decor-${i}`} style={[styles.skyCloud, c]} />
       ))}
 
-      <View style={styles.headerRow}>
-        <View style={styles.xpBubble}>
-          <Text style={styles.xpNumber}>{auth.user.xp}</Text>
-          <Text style={styles.xpLabel}>XP</Text>
+      <SafeAreaView edges={['top']}>
+        <View style={styles.headerRow}>
+          <View style={styles.xpBubble}>
+            <Text style={styles.xpNumber}>{auth.user.xp}</Text>
+            <Text style={styles.xpLabel}>XP</Text>
+          </View>
+          <View style={styles.streakBubble}>
+            <FlameIcon streak={auth.user.streak} />
+            <Text style={[styles.streakNumber, { color: streakColor(auth.user.streak) }]}>
+              {auth.user.streak}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.streakBubble}>
-          <FlameIcon streak={auth.user.streak} />
-          <Text style={[styles.streakNumber, { color: streakColor(auth.user.streak) }]}>
-            {auth.user.streak}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
-      </View>
+      </SafeAreaView>
 
       <View style={styles.welcomeSection}>
         <Text style={styles.welcome}>Welcome, {auth.user.username}</Text>
@@ -223,7 +226,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 40,
+    paddingTop: 8,
     backgroundColor: palette.background,
   },
   loadingContainer: {

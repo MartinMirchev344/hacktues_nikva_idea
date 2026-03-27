@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth-context';
 import { getLesson, createAttempt, getMyAttempts, Lesson, Exercise } from '../../lib/auth-api';
 import { palette } from '../../constants/colors';
@@ -138,6 +139,7 @@ export default function LessonDetail() {
   }
 
   return (
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
     <View style={styles.container}>
       <View style={styles.topBar}>
         <ScreenBackButton fallbackHref="/home" />
@@ -164,13 +166,17 @@ export default function LessonDetail() {
         showsVerticalScrollIndicator={false}
       />
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: palette.background,
+  },
+  container: {
+    flex: 1,
     padding: 16,
   },
   topBar: {
