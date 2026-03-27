@@ -321,6 +321,18 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
   return response.json();
 }
 
+export async function verifySignWeb(attemptId: number, blob: Blob): Promise<VerifyResult> {
+  const token = await getToken();
+  const formData = new FormData();
+  formData.append('video', blob, 'sign.webm');
+  const response = await fetchWithNetworkHint(
+    `${API_ROOT_URL}/attempts/${attemptId}/verify/`,
+    { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }
+  );
+  if (!response.ok) throw new Error('Failed to verify sign');
+  return response.json();
+}
+
 export async function getMyAttempts(): Promise<Attempt[]> {
   const token = await getToken();
   const response = await fetchWithNetworkHint(`${API_ROOT_URL}/me/attempts/`, {

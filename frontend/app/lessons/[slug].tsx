@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/auth-context';
 import { getLesson, createAttempt, getMyAttempts, Lesson, Exercise } from '../../lib/auth-api';
@@ -25,32 +25,38 @@ export default function LessonDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!auth || !slug) return;
+  useFocusEffect(
+    useCallback(() => {
+      if (!auth || !slug) return;
 
-    const fetchLesson = async () => {
-      try {
-        setLoading(true);
-        const [lesson, attempts] = await Promise.all([getLesson(slug), getMyAttempts()]);
-        setLesson(lesson);
-        const exs = lesson.exercises || [];
-        setExercises(exs);
-        const exerciseIds = new Set(exs.map(e => e.id));
-        const completed = new Set(
-          attempts
-            .filter(a => exerciseIds.has(a.exercise.id) && a.status === 'completed')
-            .map(a => a.exercise.id)
-        );
-        setCompletedExerciseIds(completed);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load lesson');
-      } finally {
-        setLoading(false);
-      }
-    };
+      const fetchLesson = async () => {
+        try {
+          setLoading(true);
+          const [lesson, attempts] = await Promise.all([getLesson(slug), getMyAttempts()]);
+          setLesson(lesson);
+          const exs = lesson.exercises || [];
+          setExercises(exs);
+          const exerciseIds = new Set(exs.map(e => e.id));
+          const completed = new Set(
+            attempts
+              .filter(a =>
+                exerciseIds.has(a.exercise.id) &&
+                a.status === 'completed' &&
+                (a.score ?? a.accuracy_score ?? 0) >= (a.exercise.passing_score ?? 70)
+              )
+              .map(a => a.exercise.id)
+          );
+          setCompletedExerciseIds(completed);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load lesson');
+        } finally {
+          setLoading(false);
+        }
+      };
 
-    fetchLesson();
-  }, [auth, slug]);
+      fetchLesson();
+    }, [auth, slug])
+  );
 
   const handleStartExercise = async (exercise: Exercise) => {
     if (!auth) return;

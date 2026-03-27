@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
@@ -19,6 +20,7 @@ import {
   createAttempt,
   submitAttempt,
   verifySign,
+  verifySignWeb,
   getMyAttempts,
   VerifyResult,
 } from '../../lib/auth-api';
@@ -53,6 +55,23 @@ export default function Exercise() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
 
+  // Web-specific recording refs
+  const webVideoRef = useRef<any>(null);
+  const webStreamRef = useRef<MediaStream | null>(null);
+  const webRecorderRef = useRef<MediaRecorder | null>(null);
+  const webChunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then(stream => {
+        webStreamRef.current = stream;
+        if (webVideoRef.current) webVideoRef.current.srcObject = stream;
+      })
+      .catch(() => {});
+    return () => { webStreamRef.current?.getTracks().forEach(t => t.stop()); };
+  }, []);
+
   const playSound = useCallback(async (type: 'correct' | 'fail' | 'lesson_complete') => {
     const sources = {
       correct: require('../../assets/sounds/correct.mp3'),
@@ -85,6 +104,34 @@ export default function Exercise() {
   }, [auth, id]);
 
   const startRecording = async () => {
+    if (Platform.OS === 'web') {
+      const stream = webStreamRef.current;
+      if (!stream) return;
+      setPhase('recording');
+      const recorder = new MediaRecorder(stream);
+      webRecorderRef.current = recorder;
+      webChunksRef.current = [];
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) webChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const blob = new Blob(webChunksRef.current, { type: 'video/webm' });
+        setPhase('uploading');
+        try {
+          const res = await verifySignWeb(attempt.id, blob);
+          setResult(res);
+          setPhase('results');
+          playSound(res.is_correct ? 'correct' : 'fail');
+        } catch {
+          setPhase('idle');
+          Alert.alert('Error', 'Failed to process video. Please try again.');
+        }
+      };
+      recorder.start();
+      setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 10000);
+      return;
+    }
+
     if (!cameraRef.current) return;
     setPhase('recording');
     try {
@@ -105,6 +152,10 @@ export default function Exercise() {
   };
 
   const stopRecording = () => {
+    if (Platform.OS === 'web') {
+      webRecorderRef.current?.stop();
+      return;
+    }
     cameraRef.current?.stopRecording();
   };
 
@@ -330,13 +381,19 @@ export default function Exercise() {
 
         {/* Camera + controls */}
         {phase !== 'results' && (
-          <View style={styles.cameraWrapper}>
-            <CameraView
-              ref={cameraRef}
-              style={styles.camera}
-              facing="front"
-              mode="video"
-            />
+          <View style={[styles.cameraWrapper, Platform.OS === 'web' && styles.cameraWrapperWeb]}>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore - web only element
+              <video
+                ref={webVideoRef}
+                autoPlay
+                muted
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <CameraView ref={cameraRef} style={styles.camera} facing="front" mode="video" />
+            )}
 
             {/* Recording indicator */}
             {phase === 'recording' && (
@@ -569,6 +626,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#000',
+  },
+  cameraWrapperWeb: {
+    width: '100%',
+    maxWidth: 400,
+    aspectRatio: 3 / 4,
+    alignSelf: 'center',
   },
   camera: { flex: 1 },
   recordingBadge: {
