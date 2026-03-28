@@ -1,0 +1,24 @@
+.DS_Store
+
+# Python environments
+.venv/
+venv/
+env/
+backend/py39clean/
+
+# Python cache/build artifacts
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Local databases
+*.sqlite3
+
+# Frontend local artifacts
+frontend/node_modules/
+frontend/.expo/
+
+# Local environment files
+.env
+.env.local
+.env.*.local

@@ -6,8 +6,11 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
+import numpy as np
 from PIL import Image
 
+from .compare import build_synthetic_template, compare_sequence_to_template, has_template_support
+from .feedback_rules import build_exercise_feedback
 from .views import analyze_asl_landmarks, classify_asl_landmarks
 
 
@@ -190,3 +193,199 @@ class AlphabetPredictViewTests(APITestCase):
         self.assertEqual(response.data["expected_letter"], "w")
         self.assertFalse(response.data["is_correct"])
         self.assertTrue(any("pinky" in item.lower() for item in response.data["feedback_items"]))
+
+
+class TemplateComparisonTests(APITestCase):
+    def test_hello_template_scores_high_for_matching_sequence(self):
+        template = build_synthetic_template("hello")
+
+        comparison = compare_sequence_to_template(template, template, passing_score=70)
+
+        self.assertTrue(comparison["correct"])
+        self.assertGreaterEqual(comparison["score"], 95.0)
+        self.assertGreaterEqual(comparison["shape_score"], 95.0)
+
+    def test_hello_feedback_targets_forehead_when_start_position_is_too_low(self):
+        template = build_synthetic_template("hello")
+        shifted_sequence = build_synthetic_template("hello")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 1] += 0.12
+            hand_center[1] += 0.12
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("hello", comparison)
+
+        self.assertTrue(any("forehead" in item.lower() for item in feedback_items))
+
+    def test_extended_templates_are_available_for_new_sign_batch(self):
+        for sign_name in (
+            "goodbye",
+            "please",
+            "sorry",
+            "no",
+            "mother",
+            "father",
+            "brother",
+            "sister",
+            "friend",
+            "red",
+            "black",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "blue",
+            "green",
+            "yellow",
+            "white",
+            "happy",
+            "angry",
+            "tired",
+            "eat",
+            "drink",
+            "understand",
+            "where",
+            "who",
+            "water",
+            "maybe",
+            "what",
+            "more",
+            "finished",
+            "help",
+            "stop",
+            "wait",
+            "when",
+            "how",
+            "sad",
+            "love",
+        ):
+            self.assertTrue(has_template_support(sign_name), sign_name)
+            template = build_synthetic_template(sign_name)
+            self.assertEqual(template["exercise"], sign_name)
+            self.assertEqual(template["resampled_frame_count"], 30)
+
+    def test_red_feedback_targets_lips_when_start_position_is_wrong(self):
+        template = build_synthetic_template("red")
+        shifted_sequence = build_synthetic_template("red")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 0] += 0.20
+            hand_center[0] += 0.20
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("red", comparison)
+
+        self.assertTrue(any("lips" in item.lower() for item in feedback_items))
+
+    def test_understand_feedback_targets_temple_when_start_position_is_wrong(self):
+        template = build_synthetic_template("understand")
+        shifted_sequence = build_synthetic_template("understand")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 1] += 0.16
+            hand_center[1] += 0.16
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("understand", comparison)
+
+        self.assertTrue(any("temple" in item.lower() for item in feedback_items))
+
+    def test_water_feedback_targets_chin_when_start_position_is_wrong(self):
+        template = build_synthetic_template("water")
+        shifted_sequence = build_synthetic_template("water")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 1] += 0.15
+            hand_center[1] += 0.15
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("water", comparison)
+
+        self.assertTrue(any("chin" in item.lower() for item in feedback_items))
+
+    def test_help_feedback_mentions_both_hands_when_secondary_hand_is_missing(self):
+        template = build_synthetic_template("help")
+        one_hand_sequence = build_synthetic_template("help")
+
+        for frame in one_hand_sequence["frames"]:
+            frame.pop("secondary_handedness", None)
+            frame.pop("secondary_hand_landmarks", None)
+            frame.pop("secondary_hand_center", None)
+            frame.pop("secondary_openness", None)
+            frame.pop("secondary_palm_size", None)
+
+        comparison = compare_sequence_to_template(one_hand_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("help", comparison)
+
+        self.assertTrue(any("both hands" in item.lower() for item in feedback_items))
+
+    def test_sad_feedback_targets_face_when_start_position_is_too_low(self):
+        template = build_synthetic_template("sad")
+        shifted_sequence = build_synthetic_template("sad")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 1] += 0.18
+            hand_center[1] += 0.18
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+            secondary_landmarks = np.array(frame["secondary_hand_landmarks"], dtype=np.float32)
+            secondary_center = np.array(frame["secondary_hand_center"], dtype=np.float32)
+            secondary_landmarks[:, 1] += 0.18
+            secondary_center[1] += 0.18
+            frame["secondary_hand_landmarks"] = secondary_landmarks.tolist()
+            frame["secondary_hand_center"] = secondary_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("sad", comparison)
+
+        self.assertTrue(any("face" in item.lower() for item in feedback_items))
+
+    def test_tired_feedback_targets_eyes_when_start_position_is_too_low(self):
+        template = build_synthetic_template("tired")
+        shifted_sequence = build_synthetic_template("tired")
+
+        for frame in shifted_sequence["frames"]:
+            hand_landmarks = np.array(frame["hand_landmarks"], dtype=np.float32)
+            hand_center = np.array(frame["hand_center"], dtype=np.float32)
+            hand_landmarks[:, 1] += 0.18
+            hand_center[1] += 0.18
+            frame["hand_landmarks"] = hand_landmarks.tolist()
+            frame["hand_center"] = hand_center.tolist()
+
+            secondary_landmarks = np.array(frame["secondary_hand_landmarks"], dtype=np.float32)
+            secondary_center = np.array(frame["secondary_hand_center"], dtype=np.float32)
+            secondary_landmarks[:, 1] += 0.18
+            secondary_center[1] += 0.18
+            frame["secondary_hand_landmarks"] = secondary_landmarks.tolist()
+            frame["secondary_hand_center"] = secondary_center.tolist()
+
+        comparison = compare_sequence_to_template(shifted_sequence, template, passing_score=90)
+        _, feedback_items = build_exercise_feedback("tired", comparison)
+
+        self.assertTrue(any("eyes" in item.lower() for item in feedback_items))

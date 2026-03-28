@@ -1,10 +1,55 @@
-import os
-import tempfile
+from __future__ import annotations
 
-from recognition.services import get_recognition_service, normalize_label
+from recognition.compare import compare_video_to_template, has_template_support
+from recognition.feedback_rules import build_exercise_feedback
+from recognition.mediapipe_utils import extract_video_frames, normalize_sign_name
 
 
-def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) -> dict:
+def verify_sign(
+    video_file,
+    expected_sign: str,
+    lesson_id: int | None = None,
+    passing_score: float = 70.0,
+) -> dict:
+    normalized_expected = normalize_sign_name(expected_sign)
+
+    if has_template_support(normalized_expected):
+        try:
+            comparison = compare_video_to_template(
+                video_file,
+                normalized_expected,
+                passing_score=passing_score,
+            )
+            coach_summary, feedback_items = build_exercise_feedback(normalized_expected, comparison)
+
+            return {
+                "exercise": comparison["exercise"],
+                "is_correct": comparison["correct"],
+                "correct": comparison["correct"],
+                "score": comparison["score"],
+                "confidence": comparison["score"],
+                "detected_sign": normalized_expected,
+                "accuracy_score": comparison["score"],
+                "handshape_score": comparison["shape_score"],
+                "speed_score": comparison["motion_score"],
+                "position_score": comparison["position_score"],
+                "coach_summary": coach_summary,
+                "feedback_items": feedback_items,
+                "tracking_data": comparison["tracking_data"],
+                "metrics": comparison["metrics"],
+                "candidates": [],
+            }
+        except Exception as exc:
+            raise RuntimeError(
+                f"LOCAL_TEMPLATE_ERROR[{type(exc).__name__}] sign={normalized_expected}: {exc}"
+            ) from exc
+
+    return _verify_with_classifier(video_file, normalized_expected, lesson_id=lesson_id)
+
+
+def _verify_with_classifier(video_file, expected_sign: str, lesson_id: int | None = None) -> dict:
+    from recognition.services import get_recognition_service, normalize_label
+
     frames = extract_video_frames(video_file)
     lesson_ids = [lesson_id] if lesson_id is not None else list(range(1, 20))
     prediction = get_recognition_service().predict_frames(
@@ -15,9 +60,7 @@ def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) ->
     )
 
     detected_sign = normalize_label(prediction.predicted_sign)
-    normalized_expected = normalize_label(expected_sign)
-    is_correct = detected_sign == normalized_expected
-
+    is_correct = detected_sign == expected_sign
     no_landmarks = prediction.tracking_data.get("frames_with_landmarks", 1) == 0
     confidence = round(prediction.confidence * 100, 2)
     accuracy_score = confidence if is_correct else round(max(confidence * 0.6, 5.0), 2)
@@ -29,27 +72,31 @@ def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) ->
             "Your hands and body were not detected in the video. "
             "Make sure your hands and upper body are clearly visible, well-lit, and centered in the frame."
         )
-        feedback_items = ["No landmarks detected — try again with better lighting and positioning."]
+        feedback_items = ["No landmarks detected - try again with better lighting and positioning."]
     elif is_correct:
         coach_summary = f"Nice work! The model recognized '{detected_sign}' with {confidence:.0f}% confidence."
         feedback_items = []
     else:
         coach_summary = (
-            f"The model thinks you signed '{detected_sign}' instead of '{normalized_expected}'. "
+            f"The model thinks you signed '{detected_sign}' instead of '{expected_sign}'. "
             "Try centering your hands, signing more slowly, and ensuring good lighting."
         )
         feedback_items = [
-            f"Expected: {normalized_expected}",
+            f"Expected: {expected_sign}",
             f"Detected: {detected_sign}",
         ]
         if prediction.candidates:
             top_candidates = ", ".join(
-                f"{c.sign} ({round(c.score * 100, 0):.0f}%)" for c in prediction.candidates[:3]
+                f"{candidate.sign} ({round(candidate.score * 100, 0):.0f}%)"
+                for candidate in prediction.candidates[:3]
             )
             feedback_items.append(f"Top predictions: {top_candidates}")
 
     return {
+        "exercise": expected_sign,
         "is_correct": is_correct,
+        "correct": is_correct,
+        "score": accuracy_score,
         "confidence": confidence,
         "detected_sign": detected_sign,
         "accuracy_score": accuracy_score,
@@ -68,35 +115,3 @@ def verify_sign(video_file, expected_sign: str, lesson_id: int | None = None) ->
             for candidate in prediction.candidates
         ],
     }
-
-
-def extract_video_frames(video_file):
-    try:
-        import cv2
-    except ImportError as exc:
-        raise RuntimeError("OpenCV is required to process uploaded videos.") from exc
-
-    suffix = os.path.splitext(getattr(video_file, "name", "upload.mp4"))[1] or ".mp4"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-        for chunk in video_file.chunks():
-            temp_file.write(chunk)
-        temp_path = temp_file.name
-
-    capture = cv2.VideoCapture(temp_path)
-    frames = []
-    try:
-        while True:
-            success, frame = capture.read()
-            if not success:
-                break
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(rgb_frame)
-    finally:
-        capture.release()
-        os.unlink(temp_path)
-
-    if not frames:
-        raise RuntimeError("No frames could be extracted from the uploaded video.")
-
-    return frames
-

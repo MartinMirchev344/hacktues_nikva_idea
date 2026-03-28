@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 from dataclasses import dataclass
@@ -142,7 +144,10 @@ class MediaPipeHolisticExtractor:
         self.mp = mp
         task_path = self._ensure_task_asset(config)
         options = vision.HolisticLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(task_path)),
+            base_options=BaseOptions(
+                model_asset_path=str(task_path),
+                delegate=BaseOptions.Delegate.CPU,
+            ),
             running_mode=vision.RunningMode.IMAGE,
             output_face_blendshapes=False,
             output_segmentation_mask=False,
@@ -597,4 +602,3 @@ class RecognitionService:
 @lru_cache(maxsize=1)
 def get_recognition_service() -> RecognitionService:
     return RecognitionService()
-

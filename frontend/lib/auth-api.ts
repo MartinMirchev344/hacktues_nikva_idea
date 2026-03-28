@@ -320,13 +320,35 @@ export type VerifyResult = {
   }>;
 };
 
+function getMediaUploadMeta(uri: string, fallbackBaseName: string, fallbackMime: string) {
+  const cleanedUri = uri.split('?')[0];
+  const lastSegment = cleanedUri.split('/').pop() || fallbackBaseName;
+  const hasExtension = /\.[a-z0-9]+$/i.test(lastSegment);
+  const name = hasExtension ? lastSegment : fallbackBaseName;
+  const extension = (name.split('.').pop() || '').toLowerCase();
+
+  if (extension === 'mov') return { name, type: 'video/quicktime' };
+  if (extension === 'webm') return { name, type: 'video/webm' };
+  if (extension === 'mp4' || extension === 'm4v') return { name, type: 'video/mp4' };
+  if (extension === 'jpg' || extension === 'jpeg') return { name, type: 'image/jpeg' };
+  if (extension === 'png') return { name, type: 'image/png' };
+
+  return { name, type: fallbackMime };
+}
+
+async function throwWithApiDetail(response: Response, fallbackMessage: string): Promise<never> {
+  const data = await response.json().catch(() => ({}));
+  throw new Error(data?.detail ?? fallbackMessage);
+}
+
 export async function verifySign(attemptId: number, videoUri: string): Promise<VerifyResult> {
   const token = await getToken();
   const formData = new FormData();
+  const uploadMeta = getMediaUploadMeta(videoUri, 'sign.mp4', 'video/mp4');
   formData.append('video', {
     uri: videoUri,
-    name: 'sign.mp4',
-    type: 'video/mp4',
+    name: uploadMeta.name,
+    type: uploadMeta.type,
   } as any);
 
   const response = await fetchWithNetworkHint(
@@ -341,7 +363,7 @@ export async function verifySign(attemptId: number, videoUri: string): Promise<V
   );
 
   if (!response.ok) {
-    throw new Error('Failed to verify sign');
+    return throwWithApiDetail(response, 'Failed to verify sign');
   }
   return response.json();
 }
@@ -370,10 +392,11 @@ export async function predictAlphabetPhoto(
 ): Promise<AlphabetPrediction> {
   const token = await getToken();
   const formData = new FormData();
+  const uploadMeta = getMediaUploadMeta(imageUri, 'photo.jpg', 'image/jpeg');
   formData.append('image', {
     uri: imageUri,
-    name: 'photo.jpg',
-    type: 'image/jpeg',
+    name: uploadMeta.name,
+    type: uploadMeta.type,
   } as any);
   if (expectedLetter) {
     formData.append('expected_letter', expectedLetter);
@@ -412,7 +435,7 @@ export async function verifySignWeb(attemptId: number, blob: Blob): Promise<Veri
     `${API_ROOT_URL}/attempts/${attemptId}/verify/`,
     { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData }
   );
-  if (!response.ok) throw new Error('Failed to verify sign');
+  if (!response.ok) return throwWithApiDetail(response, 'Failed to verify sign');
   return response.json();
 }
 

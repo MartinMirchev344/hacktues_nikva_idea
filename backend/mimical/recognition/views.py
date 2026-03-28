@@ -45,29 +45,24 @@ def get_holistic_task_path() -> Path:
 
 def detect_hand_landmarks(pil_image):
     """
-    Detect 21 hand landmarks using MediaPipe Holistic Tasks API.
+    Detect 21 hand landmarks using MediaPipe Hands.
     Returns list of NormalizedLandmark, or None if no hand found.
     """
     import mediapipe as mp
-    from mediapipe.tasks import python as mp_python
-    from mediapipe.tasks.python import vision as mp_vision
 
     img_np = np.array(pil_image)
 
-    options = mp_vision.HolisticLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=str(get_holistic_task_path())),
-        running_mode=mp_vision.RunningMode.IMAGE,
-        output_face_blendshapes=False,
-        output_segmentation_mask=False,
-    )
-    with mp_vision.HolisticLandmarker.create_from_options(options) as detector:
-        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
-        result = detector.detect(mp_img)
+    with mp.solutions.hands.Hands(
+        static_image_mode=True,
+        max_num_hands=1,
+        model_complexity=1,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    ) as detector:
+        result = detector.process(img_np)
 
-    if getattr(result, "left_hand_landmarks", None):
-        return result.left_hand_landmarks
-    if getattr(result, "right_hand_landmarks", None):
-        return result.right_hand_landmarks
+    if getattr(result, "multi_hand_landmarks", None):
+        return result.multi_hand_landmarks[0].landmark
     return None
 
 
@@ -184,6 +179,7 @@ def analyze_asl_landmarks(landmarks):
     thumb_ring_tip = dist(4, 16)
     thumb_middle_mcp = dist(4, 9)
     thumb_index_middle_gap = midpoint_distance(4, 5, 9)
+    thumb_knuckle_height = float((((lm[5, 1] + lm[9, 1]) / 2.0) - lm[4, 1]) / hand_size)
 
     index_middle_spread = dist(8, 12) / max(dist(5, 9), 1e-6)
     middle_ring_spread = dist(12, 16) / max(dist(9, 13), 1e-6)
@@ -262,7 +258,7 @@ def analyze_asl_landmarks(landmarks):
             _score_ge(thumb_ring_tip, 0.72, 0.18),
             _score_ge(index_middle_spread, 1.05, 0.28),
             1.0 - _score_le(thumb_index_touch, 0.30, 0.12),
-        ),
+        ) * _score_ge(thumb_knuckle_height, 0.08, 0.08),
         "m": _average(
             finger_fold_scores["index"],
             finger_fold_scores["middle"],
@@ -277,7 +273,7 @@ def analyze_asl_landmarks(landmarks):
             finger_extension_scores["middle"],
             finger_fold_scores["ring"],
             finger_fold_scores["pinky"],
-            _score_le(index_middle_spread, 0.95, 0.20),
+            _score_le(index_middle_spread, 0.90, 0.12),
             1.0 if crossed_index_middle else 0.0,
         ),
         "t": _average(
@@ -293,8 +289,9 @@ def analyze_asl_landmarks(landmarks):
             finger_extension_scores["middle"],
             finger_fold_scores["ring"],
             finger_fold_scores["pinky"],
-            _score_ge(index_middle_spread, 1.26, 0.22),
-            _score_le(thumb_ring_tip, 0.68, 0.18),
+            _score_ge(index_middle_spread, 1.28, 0.32),
+            _score_le(thumb_knuckle_height, 0.04, 0.10),
+            1.0 - _score_le(thumb_middle_mcp, 0.36, 0.16),
             0.0 if crossed_index_middle else 1.0,
         ),
         "w": _average(
@@ -306,6 +303,7 @@ def analyze_asl_landmarks(landmarks):
             1.0 - finger_extension_scores["pinky"],
             _score_ge(index_middle_spread, 1.08, 0.28),
             _score_ge(middle_ring_spread, 1.08, 0.28),
+            _score_ge(ring_pinky_spread, 1.40, 0.35),
         ),
     }
 
@@ -323,7 +321,7 @@ def analyze_asl_landmarks(landmarks):
     confidence_gap = top_candidate["confidence"] - runner_up["confidence"]
     predicted_letter = top_candidate["letter"]
 
-    if top_confidence < 48.0 or confidence_gap < 7.0:
+    if top_confidence < 48.0 or confidence_gap < 8.0:
         predicted_letter = None
         top_confidence = 0.0
 
@@ -352,6 +350,7 @@ def analyze_asl_landmarks(landmarks):
                 "index_touch_distance": round(thumb_index_touch, 3),
                 "middle_base_distance": round(thumb_middle_mcp, 3),
                 "index_middle_gap_distance": round(thumb_index_middle_gap, 3),
+                "knuckle_height": round(thumb_knuckle_height, 3),
                 "ring_tip_distance": round(thumb_ring_tip, 3),
             },
             "spreads": {

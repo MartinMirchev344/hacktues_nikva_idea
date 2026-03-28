@@ -1,4 +1,5 @@
 from decimal import Decimal
+import traceback
 from django.db.models import Count
 from django.utils import timezone
 from rest_framework import generics, permissions, status, filters
@@ -188,7 +189,18 @@ class VerifySignView(APIView):
             return Response({"detail": "No video provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            result = verify_sign(video, attempt.exercise.expected_sign, lesson_id=attempt.exercise.lesson_id)
+            print(
+                f"[verify] attempt={attempt.id} exercise={attempt.exercise.expected_sign} "
+                f"filename={getattr(video, 'name', 'upload')} size={getattr(video, 'size', 'unknown')}"
+            )
+            result = verify_sign(
+                video,
+                attempt.exercise.expected_sign,
+                lesson_id=attempt.exercise.lesson_id,
+                passing_score=attempt.exercise.passing_score,
+            )
         except Exception as exc:
+            print(f"[verify:error] attempt={attempt.id} exercise={attempt.exercise.expected_sign}: {exc}")
+            traceback.print_exc()
             return Response({"detail": f"Recognition failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(result, status=status.HTTP_200_OK)

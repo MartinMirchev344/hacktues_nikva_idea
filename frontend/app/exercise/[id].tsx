@@ -302,7 +302,8 @@ export default function Exercise() {
       }
     } catch (err) {
       setPhase('idle');
-      Alert.alert('Error', 'Failed to process video. Please try again.');
+      const message = err instanceof Error ? err.message : 'Failed to process video. Please try again.';
+      Alert.alert('Error', message);
     }
   };
 

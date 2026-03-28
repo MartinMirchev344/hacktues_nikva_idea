@@ -43,7 +43,10 @@ class VerifySignApiTests(APITestCase):
     @patch("lessons.views.verify_sign")
     def test_verify_endpoint_returns_model_output(self, mock_verify_sign):
         mock_verify_sign.return_value = {
+            "exercise": "hello",
             "is_correct": True,
+            "correct": True,
+            "score": 90.0,
             "confidence": 91.5,
             "detected_sign": "hello",
             "accuracy_score": 90.0,
@@ -62,10 +65,16 @@ class VerifySignApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["detected_sign"], "hello")
-        mock_verify_sign.assert_called_once_with(
-            video,
-            self.exercise.expected_sign,
-            lesson_ids=[self.lesson.id],
+        mock_verify_sign.assert_called_once()
+        called_video, called_expected_sign = mock_verify_sign.call_args.args
+        self.assertEqual(called_video.name, video.name)
+        self.assertEqual(called_expected_sign, self.exercise.expected_sign)
+        self.assertEqual(
+            mock_verify_sign.call_args.kwargs,
+            {
+                "lesson_id": self.lesson.id,
+                "passing_score": self.exercise.passing_score,
+            },
         )
 
     def test_verify_endpoint_requires_video(self):
@@ -77,4 +86,3 @@ class VerifySignApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["detail"], "No video provided.")
-
