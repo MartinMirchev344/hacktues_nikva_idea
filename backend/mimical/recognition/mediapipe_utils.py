@@ -99,19 +99,41 @@ class HolisticSequenceExtractor:
     def __init__(self):
         try:
             import mediapipe as mp
+            from mediapipe.tasks.python import BaseOptions
+            from mediapipe.tasks.python import vision
         except ImportError as exc:
             raise RuntimeError(
                 "MediaPipe dependencies are missing. Install mediapipe in your backend environment."
             ) from exc
 
         self.mp = mp
-        self.detector = mp.solutions.holistic.Holistic(
-            static_image_mode=True,
-            model_complexity=1,
-            smooth_landmarks=False,
-            enable_segmentation=False,
-            refine_face_landmarks=False,
-        )
+        self._mode = "tasks"
+        try:
+            task_path = get_holistic_task_path()
+            options = vision.HolisticLandmarkerOptions(
+                base_options=BaseOptions(
+                    model_asset_path=str(task_path),
+                    delegate=BaseOptions.Delegate.CPU,
+                ),
+                running_mode=vision.RunningMode.IMAGE,
+                output_face_blendshapes=False,
+                output_segmentation_mask=False,
+            )
+            self.detector = vision.HolisticLandmarker.create_from_options(options)
+        except Exception:
+            holistic_api = getattr(getattr(mp, "solutions", None), "holistic", None)
+            if holistic_api is None:
+                raise RuntimeError(
+                    "The installed mediapipe package does not expose either the Tasks API or mp.solutions.holistic."
+                )
+            self._mode = "legacy"
+            self.detector = holistic_api.Holistic(
+                static_image_mode=True,
+                model_complexity=1,
+                smooth_landmarks=False,
+                enable_segmentation=False,
+                refine_face_landmarks=False,
+            )
 
     def close(self) -> None:
         if self.detector:
@@ -124,13 +146,7 @@ class HolisticSequenceExtractor:
         current_side = None
 
         for frame in frames:
-            raw_results = self.detector.process(frame)
-            results = SimpleNamespace(
-                left_hand_landmarks=list(getattr(getattr(raw_results, "left_hand_landmarks", None), "landmark", []) or []),
-                right_hand_landmarks=list(getattr(getattr(raw_results, "right_hand_landmarks", None), "landmark", []) or []),
-                pose_landmarks=list(getattr(getattr(raw_results, "pose_landmarks", None), "landmark", []) or []),
-                face_landmarks=list(getattr(getattr(raw_results, "face_landmarks", None), "landmark", []) or []),
-            )
+            results = self._detect_frame(frame)
             frame_record = self._build_frame_record(results, current_side)
             if frame_record is not None:
                 detected_frames.append(frame_record)
@@ -155,6 +171,25 @@ class HolisticSequenceExtractor:
             "handedness": handedness,
             "frames": resampled_frames,
         }
+
+    def _detect_frame(self, frame: np.ndarray):
+        if self._mode == "tasks":
+            mp_image = self.mp.Image(image_format=self.mp.ImageFormat.SRGB, data=frame)
+            raw_results = self.detector.detect(mp_image)
+            return SimpleNamespace(
+                left_hand_landmarks=_coerce_landmark_list(getattr(raw_results, "left_hand_landmarks", None)),
+                right_hand_landmarks=_coerce_landmark_list(getattr(raw_results, "right_hand_landmarks", None)),
+                pose_landmarks=_coerce_landmark_list(getattr(raw_results, "pose_landmarks", None)),
+                face_landmarks=_coerce_landmark_list(getattr(raw_results, "face_landmarks", None)),
+            )
+
+        raw_results = self.detector.process(frame)
+        return SimpleNamespace(
+            left_hand_landmarks=_coerce_landmark_list(getattr(raw_results, "left_hand_landmarks", None)),
+            right_hand_landmarks=_coerce_landmark_list(getattr(raw_results, "right_hand_landmarks", None)),
+            pose_landmarks=_coerce_landmark_list(getattr(raw_results, "pose_landmarks", None)),
+            face_landmarks=_coerce_landmark_list(getattr(raw_results, "face_landmarks", None)),
+        )
 
     def _build_frame_record(self, results, current_side: str | None) -> dict | None:
         hands = _choose_hands(results, current_side)
@@ -210,6 +245,25 @@ def _dominant_handedness(frames: list[dict]) -> str | None:
 
 def _landmark_to_xyz(landmark) -> list[float]:
     return [float(landmark.x), float(landmark.y), float(getattr(landmark, "z", 0.0))]
+
+
+def _coerce_landmark_list(value):
+    if value is None:
+        return []
+
+    if hasattr(value, "landmark"):
+        return list(value.landmark or [])
+
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return []
+        first_item = value[0]
+        if hasattr(first_item, "x"):
+            return list(value)
+        if isinstance(first_item, (list, tuple)):
+            return list(first_item)
+
+    return []
 
 
 def _choose_hands(results, current_side: str | None):

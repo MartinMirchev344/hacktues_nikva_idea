@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 
 from .compare import build_synthetic_template, compare_sequence_to_template, has_template_support
+from .exceptions import RecognitionDependencyError
 from .feedback_rules import build_exercise_feedback
 from .views import analyze_asl_landmarks, classify_asl_landmarks
 
@@ -193,6 +194,34 @@ class AlphabetPredictViewTests(APITestCase):
         self.assertEqual(response.data["expected_letter"], "w")
         self.assertFalse(response.data["is_correct"])
         self.assertTrue(any("pinky" in item.lower() for item in response.data["feedback_items"]))
+
+    @patch("recognition.views.detect_hand_landmarks")
+    def test_returns_service_unavailable_when_image_dependencies_are_missing(self, mock_detect_hand_landmarks):
+        mock_detect_hand_landmarks.side_effect = RecognitionDependencyError(
+            "MediaPipe dependencies are missing. Install mediapipe in your backend environment."
+        )
+
+        response = self.client.post(
+            "/api/recognition/alphabet/predict/",
+            {"image": build_test_image(), "expected_letter": "b"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn("MediaPipe dependencies are missing", response.data["detail"])
+
+    @patch("recognition.views.detect_hand_landmarks")
+    def test_returns_unprocessable_entity_for_malformed_landmarks(self, mock_detect_hand_landmarks):
+        mock_detect_hand_landmarks.return_value = [make_landmark(0.5, 0.5, 0.0) for _ in range(5)]
+
+        response = self.client.post(
+            "/api/recognition/alphabet/predict/",
+            {"image": build_test_image(), "expected_letter": "b"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        self.assertIn("Could not identify the hand sign clearly enough", response.data["detail"])
 
 
 class TemplateComparisonTests(APITestCase):

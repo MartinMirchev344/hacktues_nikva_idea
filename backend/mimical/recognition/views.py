@@ -1,5 +1,7 @@
 import io
+import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 from urllib.request import urlretrieve
 
@@ -9,6 +11,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .exceptions import RecognitionConfigurationError, RecognitionDependencyError
 from .serializers import RecognitionHealthSerializer
 from .services import get_recognition_service
 
@@ -16,6 +19,7 @@ DEFAULT_MEDIAPIPE_TASK_URL = (
     "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/"
     "holistic_landmarker/float16/latest/holistic_landmarker.task"
 )
+logger = logging.getLogger(__name__)
 
 
 def get_holistic_task_path() -> Path:
@@ -43,16 +47,90 @@ def get_holistic_task_path() -> Path:
     return task_path
 
 
+def _bbox_area_for_landmarks(landmarks):
+    if not landmarks:
+        return 0.0
+    coords = np.array([[float(landmark.x), float(landmark.y)] for landmark in landmarks], dtype=np.float32)
+    mins = coords.min(axis=0)
+    maxs = coords.max(axis=0)
+    width, height = maxs - mins
+    return float(width * height)
+
+
+def _choose_primary_hand_landmarks(left_hand_landmarks, right_hand_landmarks):
+    left_hand_landmarks = left_hand_landmarks or []
+    right_hand_landmarks = right_hand_landmarks or []
+
+    if left_hand_landmarks and right_hand_landmarks:
+        return (
+            left_hand_landmarks
+            if _bbox_area_for_landmarks(left_hand_landmarks) >= _bbox_area_for_landmarks(right_hand_landmarks)
+            else right_hand_landmarks
+        )
+    if left_hand_landmarks:
+        return left_hand_landmarks
+    if right_hand_landmarks:
+        return right_hand_landmarks
+    return None
+
+
+@lru_cache(maxsize=1)
+def _get_tasks_holistic_detector():
+    try:
+        import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions
+        from mediapipe.tasks.python import vision
+    except ImportError as exc:
+        raise RecognitionDependencyError(
+            "MediaPipe dependencies are missing. Install mediapipe in your backend environment."
+        ) from exc
+
+    task_path = get_holistic_task_path()
+    options = vision.HolisticLandmarkerOptions(
+        base_options=BaseOptions(
+            model_asset_path=str(task_path),
+            delegate=BaseOptions.Delegate.CPU,
+        ),
+        running_mode=vision.RunningMode.IMAGE,
+        output_face_blendshapes=False,
+        output_segmentation_mask=False,
+    )
+    return mp, vision.HolisticLandmarker.create_from_options(options)
+
+
 def detect_hand_landmarks(pil_image):
     """
-    Detect 21 hand landmarks using MediaPipe Hands.
-    Returns list of NormalizedLandmark, or None if no hand found.
+    Detect 21 hand landmarks and return the primary hand, or None if no hand was found.
     """
-    import mediapipe as mp
-
     img_np = np.array(pil_image)
 
-    with mp.solutions.hands.Hands(
+    try:
+        mp, detector = _get_tasks_holistic_detector()
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
+        result = detector.detect(mp_image)
+        return _choose_primary_hand_landmarks(
+            getattr(result, "left_hand_landmarks", None),
+            getattr(result, "right_hand_landmarks", None),
+        )
+    except RecognitionDependencyError:
+        raise
+    except Exception as exc:
+        logger.warning("Falling back to legacy MediaPipe Hands API: %s", exc)
+
+    try:
+        import mediapipe as mp
+    except ImportError as exc:
+        raise RecognitionDependencyError(
+            "MediaPipe dependencies are missing. Install mediapipe in your backend environment."
+        ) from exc
+
+    hands_api = getattr(getattr(mp, "solutions", None), "hands", None)
+    if hands_api is None:
+        raise RecognitionDependencyError(
+            "The installed mediapipe package does not expose either the Tasks API or mp.solutions.hands."
+        )
+
+    with hands_api.Hands(
         static_image_mode=True,
         max_num_hands=1,
         model_complexity=1,
@@ -109,24 +187,77 @@ def _normalize_expected_letter(value):
     return None
 
 
+def _empty_alphabet_analysis(summary):
+    return {
+        "summary": summary,
+        "extended_fingers": [],
+        "folded_fingers": [],
+        "finger_extension_scores": {},
+        "quality": {
+            "score": 0.0,
+            "hand_box_span": 0.0,
+            "center_offset": 0.0,
+            "clipped_edges": [],
+        },
+        "thumb": {
+            "lateral_distance": 0.0,
+            "index_touch_distance": 0.0,
+            "middle_base_distance": 0.0,
+            "index_middle_gap_distance": 0.0,
+            "knuckle_height": 0.0,
+            "ring_tip_distance": 0.0,
+        },
+        "spreads": {
+            "index_middle": 0.0,
+            "middle_ring": 0.0,
+            "ring_pinky": 0.0,
+        },
+        "crossed_index_middle": False,
+    }
+
+
+def _empty_alphabet_prediction(summary):
+    return {
+        "predicted_letter": None,
+        "confidence": 0.0,
+        "top_predictions": [],
+        "analysis": _empty_alphabet_analysis(summary),
+    }
+
+
 def analyze_asl_landmarks(landmarks):
     """
     Static handshape analysis for alphabet practice.
     Supports the letters: A B D F K M R T V W.
     """
-    lm = np.array([[landmark.x, landmark.y, landmark.z] for landmark in landmarks], dtype=np.float32)
+    if not landmarks or len(landmarks) < 21:
+        return _empty_alphabet_prediction("insufficient_landmarks")
+
+    try:
+        lm = np.array(
+            [
+                [
+                    float(landmark.x),
+                    float(landmark.y),
+                    float(getattr(landmark, "z", 0.0)),
+                ]
+                for landmark in landmarks[:21]
+            ],
+            dtype=np.float32,
+        )
+    except (AttributeError, TypeError, ValueError):
+        return _empty_alphabet_prediction("invalid_landmarks")
+
+    if not np.isfinite(lm).all():
+        return _empty_alphabet_prediction("invalid_landmarks")
+
     wrist = lm[0, :2]
     palm_width = np.linalg.norm(lm[17, :2] - lm[5, :2])
     palm_height = np.linalg.norm(lm[9, :2] - wrist)
     hand_size = max(float(max(palm_width, palm_height)), 1e-6)
 
     if hand_size < 1e-6:
-        return {
-            "predicted_letter": None,
-            "confidence": 0.0,
-            "top_predictions": [],
-            "analysis": {"summary": "invalid_landmarks"},
-        }
+        return _empty_alphabet_prediction("invalid_landmarks")
 
     palm_center = (lm[5, :2] + lm[17, :2]) / 2.0
     palm_x_axis = lm[17, :2] - lm[5, :2]
@@ -458,10 +589,15 @@ def build_alphabet_response(prediction, expected_letter=None):
                 f'This looks like a solid "{expected_letter.upper()}" handshape. '
                 f'The letter pattern matches with {confidence:.0f}% confidence.'
             )
-        else:
+        elif predicted_letter:
             coach_summary = (
                 f'This looks closer to "{predicted_letter.upper()}" than "{expected_letter.upper()}". '
                 "Adjust the finger shape and try another photo."
+            )
+        else:
+            coach_summary = (
+                f'The photo did not match "{expected_letter.upper()}" clearly enough yet. '
+                "Try a clearer handshape, steadier framing, or slightly different angle."
             )
         feedback_items = build_alphabet_feedback(expected_letter, prediction)
     elif predicted_letter:
@@ -505,10 +641,21 @@ class AlphabetPredictView(APIView):
             return Response({'detail': 'No image provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            from PIL import Image, ImageOps
+            try:
+                from PIL import Image, ImageOps, UnidentifiedImageError
+            except ImportError as exc:
+                raise RecognitionDependencyError(
+                    "Pillow is required to process uploaded images. Install pillow in your backend environment."
+                ) from exc
 
             raw_bytes = image_file.read()
-            raw = Image.open(io.BytesIO(raw_bytes))
+            try:
+                raw = Image.open(io.BytesIO(raw_bytes))
+            except UnidentifiedImageError:
+                return Response(
+                    {'detail': 'The uploaded file is not a supported image.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             image = ImageOps.exif_transpose(raw).convert('RGB')
 
             landmarks = detect_hand_landmarks(image)
@@ -531,7 +678,14 @@ class AlphabetPredictView(APIView):
 
             return Response(build_alphabet_response(prediction, expected_letter=expected_letter))
 
+        except (RecognitionDependencyError, RecognitionConfigurationError) as exc:
+            logger.warning("Alphabet prediction unavailable: %s", exc)
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as exc:
+            logger.exception("Unexpected alphabet prediction failure")
             return Response(
                 {'detail': f'Prediction failed: {exc}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
